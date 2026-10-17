@@ -1,6 +1,6 @@
 import {mkdir,readFile,writeFile,rename,rm,access} from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
+import {pythonExecutable} from './python.mjs';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -13,10 +13,7 @@ export async function openUploads(dataDir){
   let files=[];
   try{files=JSON.parse(await readFile(index,'utf8'));if(!Array.isArray(files))throw Error();}
   catch(e){if(e.code!=='ENOENT')throw Error('자료 목록을 읽지 못했습니다. data/uploads 원본을 확인하세요.');}
-  const pythonCandidates=[process.env.DIALOGUE_PYTHON,
-    path.join(os.homedir(),'AppData/Local/Programs/Python/Python312/python.exe'),
-    path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe')].filter(Boolean);
-  let python='python';for(const candidate of pythonCandidates){try{await access(candidate);python=candidate;break;}catch{}}
+  const python=pythonExecutable();
   let busy=false;
   return {
     list:()=>files.map(({text,...meta})=>meta),

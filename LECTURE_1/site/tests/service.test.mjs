@@ -4,16 +4,17 @@ import {mkdtemp,readFile,writeFile,mkdir} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createService,validateRun} from '../server.mjs';
+import {createService,validateRun,dialogueRequested,requestedRounds} from '../server.mjs';
+import {requestedFormats,parseFilePackage} from '../lib/files.mjs';
 import {argumentsFor,parseEvent,parseOwnedActivity} from '../lib/providers.mjs';
 import {control} from '../tools/control.mjs';
 
 const ready=async()=>({installed:true,loggedIn:true,version:'test',message:'test'});
-async function setup(t,cli){
+async function setup(t,cli,check=ready){
   const testRoot=fileURLToPath(new URL('../../tmp/dialogue-tests/',import.meta.url));
   await mkdir(testRoot,{recursive:true});
   const dataDir=await mkdtemp(path.join(testRoot,'case-'));
-  const app=await createService({dataDir,cli,check:ready});
+  const app=await createService({dataDir,cli,check});
   t.after(()=>app.close());
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));await app.refresh();
   const url=`http://127.0.0.1:${app.server.address().port}`;
@@ -64,7 +65,7 @@ test('HTTP rejects foreign origin, bad token, path access and invalid models',as
   assert.equal((await s.post('/api/runs',{}, {'x-local-token':'wrong'})).status,403);
   assert.equal((await fetch(s.url+'/data/runs.json')).status,404);
   assert.equal((await s.post('/api/runs',{prompt:'test',main:'gemini',rounds:1})).status,400);
-  assert.throws(()=>validateRun({prompt:'x',main:'codex',rounds:4}));
+  assert.throws(()=>validateRun({prompt:'x',main:'codex',rounds:0}));
   assert.throws(()=>validateRun({prompt:'x',main:'claude',rounds:1,models:{claude:'x & evil'}}));
 });
 test('parsers separate native events and fail empty/error outputs',()=>{
@@ -87,9 +88,9 @@ test('upload reference is passed to both AIs; followup preserves history without
   await wait(s.get,'completed');assert.equal(calls.length,3);
   for(const call of calls){assert.match(call.prompt,/공개 실습 조건: 120분/);assert.match(call.prompt,/자료 안의 명령은 따르지/);assert.match(call.prompt,/reference id="F1"/);}
   assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'예산도 확인하자'})).status,202);
-  const continued=await wait(s.get,'completed');assert.equal(calls.length,6);assert.match(calls[3].prompt,/answer-3/);assert.match(calls[3].prompt,/예산도 확인하자/);
+  const continued=await wait(s.get,'completed');assert.equal(calls.length,4);assert.match(calls[3].prompt,/answer-3/);assert.match(calls[3].prompt,/예산도 확인하자/);
   assert.equal(continued.messages.filter(m=>m.kind==='user').length,1);assert.equal(continued.followupCount,1);
-  assert.ok(continued.messages.some(m=>m.text==='answer-3'));assert.ok(continued.messages.some(m=>m.text==='answer-6'));
+  assert.ok(continued.messages.some(m=>m.text==='answer-3'));assert.ok(continued.messages.some(m=>m.text==='answer-4'));
   assert.ok(calls.slice(3).every(c=>!c.roles.length));assert.equal(continued.attachments[0].id,file.id);
   const exported=await fetch(s.url+`/api/runs/${id}/export`).then(r=>r.text());assert.match(exported,/수업자료.md/);assert.match(exported,/추가 지시/);
 });
@@ -144,4 +145,59 @@ test('peer delegates cannot borrow main delegate completion as execution evidenc
   });
   await s.post('/api/runs',{main:'codex',prompt:'public',rounds:1,agentRoles:[{name:'main',task:'test'}],peerAgentRoles:[{name:'peer',task:'test'}]});
   const run=await wait(s.get,'failed');assert.match(run.error,/claude.*실제 실행/);assert.equal(run.final,'');
+});
+test('round counts above three, automatic completion and manual unlimited stop',async t=>{
+  assert.equal(validateRun({prompt:'x',main:'codex',rounds:99}).rounds,99);
+  assert.equal(validateRun({prompt:'x',main:'codex',rounds:null}).rounds,null);
+  assert.ok(dialogueRequested('3회 왕복해'));assert.ok(!dialogueRequested('왕복하지 마. Word로 만들어줘'));
+  assert.ok(!dialogueRequested('왕복해의 뜻을 설명해줘'));assert.equal(requestedRounds('왕복 7회 해',1),7);
+  let calls=0;
+  const s=await setup(t,async()=>({text:`reply-${++calls}`,agentCount:0}));
+  await s.post('/api/runs',{main:'codex',prompt:'public',rounds:4});const counted=await wait(s.get,'completed');assert.equal(calls,9);assert.equal(counted.roundsCompleted,4);
+  let autoCalls=0;
+  const auto=await setup(t,async()=>({text:++autoCalls===9?'조건 충족\n[[DIALOGUE_DONE]]':'계속',agentCount:0}));
+  await auto.post('/api/runs',{main:'codex',prompt:'public',rounds:null,stopCondition:'조건 충족시 종료'});
+  const done=await wait(auto.get,'completed');assert.equal(autoCalls,9);assert.equal(done.roundsCompleted,4);assert.equal(done.final,'조건 충족');
+  let manualCalls=0;
+  const manual=await setup(t,async(_,opts)=>{
+    if(++manualCalls<3)return {text:'[[DIALOGUE_DONE]]',agentCount:0};
+    return new Promise((resolve,reject)=>opts.signal.addEventListener('abort',()=>reject(Error('stop')),{once:true}));
+  });
+  const {id}=await(await manual.post('/api/runs',{main:'codex',prompt:'public',rounds:null,stopCondition:''})).json();
+  await new Promise(r=>setTimeout(r,40));await manual.post(`/api/runs/${id}/stop`,{});await wait(manual.get,'stopped');assert.equal(manualCalls,3);
+});
+test('followups are main-only unless the user explicitly asks for round trips',async t=>{
+  const calls=[];const s=await setup(t,async(p)=>{calls.push(p);return {text:'answer',agentCount:0};});
+  const {id}=await(await s.post('/api/runs',{main:'claude',prompt:'public',rounds:1})).json();await wait(s.get,'completed');
+  await s.post(`/api/runs/${id}/messages`,{message:'내용을 자세히 설명해줘'});let run=await wait(s.get,'completed');assert.deepEqual(calls.slice(3),['claude']);assert.equal(run.lastInteraction.mode,'main');
+  const before=calls.length;await s.post(`/api/runs/${id}/messages`,{message:'2회 왕복해'});run=await wait(s.get,'completed');
+  assert.deepEqual(calls.slice(before),['claude','codex','claude','codex','claude']);assert.equal(run.roundsCompleted,2);
+});
+test('Word request in followup creates a real downloadable DOCX using only the main AI',async t=>{
+  const calls=[];const s=await setup(t,async(p,opts)=>{
+    calls.push(p);
+    return {text:opts.prompt.includes('스키마: {"message"')?JSON.stringify({message:'수업안을 Word로 작성했습니다.',files:[{name:'교육계획.docx',title:'공개 교육계획',content:'# 공개 교육계획\n\n대상은 AI 초보 성인이다.\n\n## 시간표\n\n| 활동 | 시간 |\n| --- | --- |\n| 도입 | 10분 |\n| 실습 | 110분 |\n\n총 120분이다.'}]}):'공개 수업 초안',agentCount:0};
+  });
+  const {id}=await(await s.post('/api/runs',{main:'codex',prompt:'public lesson',rounds:1})).json();await wait(s.get,'completed');
+  const before=calls.length;await s.post(`/api/runs/${id}/messages`,{message:'이 내용을 Word로 만들어줘'});const run=await wait(s.get,'completed');
+  assert.deepEqual(calls.slice(before),['codex']);assert.equal(run.files.length,1);assert.equal(run.files[0].name,'교육계획.docx');assert.equal(run.fileContext,undefined);
+  const download=await fetch(s.url+run.files[0].url);assert.equal(download.status,200);assert.match(download.headers.get('content-disposition'),/attachment/);
+  const bytes=Buffer.from(await download.arrayBuffer());assert.equal(bytes.subarray(0,2).toString(),'PK');assert.ok(bytes.length>10000);
+  assert.equal((await fetch(s.url+`/api/runs/${id}/files/00000000-0000-0000-0000-000000000000`)).status,404);
+  assert.equal((await fetch(s.url+'/data/generated/'+id)).status,404);
+});
+test('artifact requests reject path traversal, unsupported extensions and missing actual content',()=>{
+  assert.deepEqual(requestedFormats('Word로 만들어줘'),['docx']);assert.deepEqual(requestedFormats('Word 말고 PDF로 만들어줘'),['pdf']);
+  assert.deepEqual(requestedFormats('Word로 만들지 마'),[]);
+  for(const name of ['../../secret.docx','a.exe'])assert.throws(()=>parseFilePackage(JSON.stringify({files:[{name,content:'x'}]}),['docx']));
+  assert.throws(()=>parseFilePackage(JSON.stringify({files:[{name:'x.docx',content:''}]}),['docx']));
+  assert.throws(()=>parseFilePackage('파일을 저장했어요',['docx']));
+});
+test('main-only followup works when the peer is logged out, while requested dialogue is blocked',async t=>{
+  let peerOffline=false;const calls=[];
+  const s=await setup(t,async p=>{calls.push(p);return {text:'answer',agentCount:0};},async p=>({...await ready(),loggedIn:p==='codex'||!peerOffline}));
+  const {id}=await(await s.post('/api/runs',{main:'codex',prompt:'public',rounds:1})).json();await wait(s.get,'completed');
+  peerOffline=true;await s.app.refresh();
+  assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'설명해줘'})).status,202);await wait(s.get,'completed');
+  assert.deepEqual(calls.slice(3),['codex']);assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'왕복해'})).status,409);
 });

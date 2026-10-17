@@ -16,6 +16,7 @@ let uploading = false;
 let composerRunId = null;
 let lastRunAttachments = '';
 let lastRunSettings = '';
+let lastRunFiles = '';
 const messageNodes = new Map();
 const uploadNodes = new Map();
 const uploadedFiles = new Map();
@@ -65,6 +66,94 @@ function formatTime(value, withDate = false) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('ko-KR', withDate ? { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false } : { hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+}
+
+function readRoundSettings(mode, custom, condition) {
+  if (mode === 'unlimited') return { rounds: null, stopCondition: String(condition || '').trim() };
+  const rounds = Number(mode === 'custom' ? custom : mode);
+  if (!Number.isSafeInteger(rounds) || rounds < 1) throw new Error('왕복 횟수는 1 이상의 정수로 입력해주세요.');
+  return { rounds, stopCondition: '' };
+}
+
+function updateRoundFields() {
+  const mode = $('#rounds').value;
+  $('#custom-rounds-group').hidden = mode !== 'custom';
+  $('#custom-rounds').disabled = mode !== 'custom';
+  $('#custom-rounds').required = mode === 'custom';
+  $('#stop-condition-group').hidden = mode !== 'unlimited';
+  $('#stop-condition').disabled = mode !== 'unlimited';
+}
+
+function clampPanelWidths(widths, totalWidth) {
+  const total = Math.max(840, Number.isFinite(totalWidth) ? totalWidth : 1191);
+  const available = Math.floor(total - 360 - 20);
+  const setup = Math.round(Math.min(Math.max(Number.isFinite(widths?.setup) ? widths.setup : 310, 240), available - 220));
+  const activity = Math.round(Math.min(Math.max(Number.isFinite(widths?.activity) ? widths.activity : 278, 220), available - setup));
+  return { setup, activity };
+}
+
+function connectPanelResize() {
+  const workspace = $('.workspace');
+  const desktop = window.matchMedia('(min-width:1191px)');
+  const storageKey = 'codeplant-dialogue-panel-widths-v1';
+  let widths = { setup: 310, activity: 278 };
+  let drag = null;
+  try { widths = JSON.parse(localStorage.getItem(storageKey)) || widths; } catch { /* Private browser storage can be unavailable. */ }
+  const separators = [['setup', $('#setup-separator')], ['activity', $('#activity-separator')]];
+  function apply() {
+    if (!desktop.matches) return;
+    const total = workspace.getBoundingClientRect().width;
+    widths = clampPanelWidths(widths, total);
+    workspace.style.setProperty('--setup-width', widths.setup + 'px');
+    workspace.style.setProperty('--activity-width', widths.activity + 'px');
+    for (const [side, separator] of separators) {
+      separator.setAttribute('aria-valuemin', side === 'setup' ? '240' : '220');
+      separator.setAttribute('aria-valuemax', String(Math.floor(total - 380 - widths[side === 'setup' ? 'activity' : 'setup'])));
+      separator.setAttribute('aria-valuenow', String(widths[side]));
+      separator.setAttribute('aria-valuetext', widths[side] + '픽셀');
+    }
+  }
+  function save() {
+    try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch { /* Resizing still works without persistence. */ }
+  }
+  for (const [side, separator] of separators) {
+    separator.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !desktop.matches) return;
+      event.preventDefault();
+      drag = { id: event.pointerId, x: event.clientX, side, widths: { ...widths } };
+      separator.setPointerCapture(event.pointerId);
+      document.body.classList.add('resizing-panels');
+    });
+    separator.addEventListener('pointermove', event => {
+      if (!drag || drag.id !== event.pointerId || drag.side !== side) return;
+      const delta = event.clientX - drag.x;
+      widths = { ...drag.widths, [side]: drag.widths[side] + (side === 'setup' ? delta : -delta) };
+      apply();
+    });
+    const finish = () => {
+      if (!drag || drag.side !== side) return;
+      drag = null;
+      document.body.classList.remove('resizing-panels');
+      save();
+    };
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) separator.addEventListener(type, finish);
+    separator.addEventListener('keydown', event => {
+      if (!desktop.matches || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowRight' ? 20 : -20;
+      widths[side] += side === 'setup' ? delta : -delta;
+      apply();
+      save();
+    });
+  }
+  $('#reset-layout').addEventListener('click', () => {
+    widths = { setup: 310, activity: 278 };
+    apply();
+    try { localStorage.removeItem(storageKey); } catch { /* The current layout is still reset. */ }
+  });
+  window.addEventListener('resize', apply);
+  desktop.addEventListener('change', apply);
+  apply();
 }
 
 function notice(message, success = false) {
@@ -224,13 +313,15 @@ function renderRunAttachments(run) {
 }
 
 function renderRunSettings(run) {
-  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles]);
+  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition]);
   if (signature === lastRunSettings) return;
   lastRunSettings = signature;
   $('#run-settings').hidden = !run;
   const list = $('#run-setting-list');
   list.replaceChildren();
   if (!run) return;
+  const rounds = run.rounds === null ? '횟수 제한 없이' : `${run.rounds || 1}회 왕복`;
+  list.append(node('p', 'run-round-summary', rounds + (run.rounds === null ? ` · 종료: ${run.stopCondition || '수동 중지'}` : '')));
   const peer = run.main === 'codex' ? 'claude' : 'codex';
   for (const [label, provider, text, roles] of [
     ['메인', run.main, run.mainRole, run.agentRoles || []],
@@ -249,6 +340,27 @@ function renderRunSettings(run) {
   }
 }
 
+function renderGeneratedFiles(run) {
+  const files = run?.files || [];
+  const signature = JSON.stringify([run?.id, files]);
+  if (signature === lastRunFiles) return;
+  lastRunFiles = signature;
+  $('#generated-files').hidden = !files.length;
+  setText($('#generated-file-count'), files.length);
+  const list = $('#generated-file-list');
+  list.replaceChildren();
+  for (const file of files) {
+    const item = node('div', 'generated-file');
+    const link = node('a', '', file.name || '파일 내려받기');
+    link.href = `/api/runs/${encodeURIComponent(run.id)}/files/${encodeURIComponent(file.id)}`;
+    link.download = file.name || '';
+    const bytes = Number(file.size || 0);
+    const size = bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024).toLocaleString('ko-KR')}KB` : `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+    item.append(link, node('small', '', size + (file.createdAt ? ' · ' + formatTime(file.createdAt, true) : '')));
+    list.append(item);
+  }
+}
+
 function renderComposer(run) {
   $('#followup-form').hidden = !run;
   const id = run?.id || null;
@@ -256,7 +368,7 @@ function renderComposer(run) {
     composerRunId = id;
     $('#followup-message').value = followupDrafts.get(id) || '';
   }
-  setText($('#followup-model'), run ? `${providerNames[run.main] || run.main} 메인 · ${run.rounds || 1}회 왕복 유지` : '');
+  setText($('#followup-model'), run ? `${providerNames[run.main] || run.main} 메인으로 이어가기` : '');
   updateAttachmentSummary();
 }
 
@@ -322,8 +434,9 @@ function updateControls() {
   $('#stop-run').disabled = actionPending;
   $('#upload-files').disabled = uploading;
   const run = getSelectedRun();
+  const mainReady = Boolean(currentState?.connections?.[run?.main]?.loggedIn);
   $('#followup-message').disabled = actionPending || Boolean(active);
-  $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || !ready || !$('#followup-message').value.trim();
+  $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || !mainReady || !$('#followup-message').value.trim();
   setText($('#send-followup'), actionPending ? '요청 중…' : active ? '대화 진행 중' : '후속 메시지 보내기');
   const main = $('input[name="main"]:checked')?.value || 'codex';
   const peer = main === 'codex' ? 'claude' : 'codex';
@@ -456,6 +569,7 @@ function render() {
   renderRunAttachments(run);
   renderRunSettings(run);
   renderMessages(run);
+  renderGeneratedFiles(run);
   renderAgents(run);
   renderHistory();
   renderComposer(run);
@@ -501,6 +615,7 @@ async function action(callback) {
 }
 
 $('#add-role').addEventListener('click', () => addRole());
+$('#rounds').addEventListener('change', updateRoundFields);
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
 document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', updateControls));
 $('#fill-sample').addEventListener('click', () => {
@@ -527,8 +642,11 @@ $('#run-form').addEventListener('submit', event => {
   const mainRole = $('#main-role').value.trim();
   const peerRole = $('#peer-role').value.trim();
   if (!mainRole || !peerRole) { notice('메인 AI와 상대 AI의 역할을 입력해주세요.'); return; }
+  let roundSettings;
+  try { roundSettings = readRoundSettings($('#rounds').value, $('#custom-rounds').value, $('#stop-condition').value); }
+  catch (error) { notice(error.message); return; }
   action(async () => {
-    const result = await request('/api/runs', { prompt, main: $('input[name="main"]:checked').value, rounds: Number($('#rounds').value), mainRole, peerRole, agentRoles, peerAgentRoles, models: { codex: $('#codex-model').value.trim(), claude: $('#claude-model').value.trim() }, attachmentIds: attachmentIds() });
+    const result = await request('/api/runs', { prompt, main: $('input[name="main"]:checked').value, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models: { codex: $('#codex-model').value.trim(), claude: $('#claude-model').value.trim() }, attachmentIds: attachmentIds() });
     selectedRunId = result.id;
     initialSelection = false;
   });
@@ -604,4 +722,6 @@ connectRoleEditor('main', mainRolePresets);
 connectRoleEditor('peer', peerRolePresets);
 addRole(agentRolePresets.analysis.name, agentRolePresets.analysis.task, 'main', 'analysis');
 addRole(agentRolePresets.review.name, agentRolePresets.review.task, 'main', 'review');
+updateRoundFields();
+connectPanelResize();
 poll();

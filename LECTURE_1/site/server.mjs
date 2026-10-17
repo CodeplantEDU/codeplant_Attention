@@ -8,7 +8,8 @@ import {openUploads} from './lib/uploads.mjs';
 import {requestedFormats,fileInstructions,parseFilePackage,createFiles,readGenerated} from './lib/files.mjs';
 
 const ROOT=fileURLToPath(new URL('.',import.meta.url));
-const providers=['codex','claude'];
+const providers=['codex','claude','gemini'];
+export const peerFor=run=>run.peer===undefined?(run.main==='codex'?'claude':'codex'):run.peer;
 const mainDefault='사용자 목표와 자료를 바탕으로 초안을 만들고 상대 의견의 수용·반박·보류 이유와 최종 판단을 정리한다.';
 const peerDefault='초안의 근거·누락·실행 가능성을 검토하고 반론·보완과 확인할 질문을 제시한다.';
 const fail=(status,message)=>Object.assign(Error(message),{status});
@@ -25,8 +26,10 @@ export function requestedRounds(text,fallback){
 }
 export function validateRun(input){
   if(!input||typeof input!=='object'||Array.isArray(input))throw fail(400,'작업 설정이 필요합니다.');
-  const {main,prompt,rounds,stopCondition='사용자 요구가 충족되고 새로 검토할 중요한 쟁점이 없으면 종료',agentRoles=[],peerAgentRoles=[],mainRole=mainDefault,peerRole=peerDefault,models={}}=input;
+  const {main,peer=null,prompt,rounds=1,stopCondition='사용자 요구가 충족되고 새로 검토할 중요한 쟁점이 없으면 종료',agentRoles=[],peerAgentRoles=[],mainRole=mainDefault,peerRole=peerDefault,models={}}=input;
   if(!providers.includes(main))throw fail(400,'메인 AI를 선택하세요.');
+  if(peer!==null&&(!providers.includes(peer)||peer===main))throw fail(400,'상대는 메인과 다른 AI를 선택하세요.');
+  if(main==='gemini'&&Array.isArray(agentRoles)&&agentRoles.length||peer==='gemini'&&Array.isArray(peerAgentRoles)&&peerAgentRoles.length)throw fail(400,'Gemini 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>20000)throw fail(400,'작업 지시는 1~20,000자로 입력하세요.');
   if(rounds!==null&&(!Number.isSafeInteger(rounds)||rounds<1))throw fail(400,'왕복 횟수는 1 이상의 정수 또는 제한 없음입니다.');
   if(typeof stopCondition!=='string'||stopCondition.length>3000)throw fail(400,'종료 조건은 3,000자 이하로 작성하세요.');
@@ -44,10 +47,10 @@ export function validateRun(input){
     if(typeof m!=='string'||m.length>100||m&&!/^[a-zA-Z0-9._:/-]+$/.test(m))throw fail(400,'모델 이름의 형식을 확인하세요.');
     selected[p]=m;
   }
-  return {main,prompt:prompt.trim(),rounds,stopCondition:stopCondition.trim(),mainRole:mainRole.trim(),peerRole:peerRole.trim(),agentRoles:rolesFor(agentRoles),peerAgentRoles:rolesFor(peerAgentRoles),models:selected};
+  return {main,peer,prompt:prompt.trim(),rounds,stopCondition:stopCondition.trim(),mainRole:mainRole.trim(),peerRole:peerRole.trim(),agentRoles:rolesFor(agentRoles),peerAgentRoles:rolesFor(peerAgentRoles),models:selected};
 }
 function renderExport(run){
-  return `# ${run.title}\n\n메인: ${run.main} · 상태: ${run.status} · ${run.createdAt}\n\n## 역할 설정\n\n메인: ${run.mainRole||mainDefault}\n\n상대: ${run.peerRole||peerDefault}\n\n메인 내부 역할: ${run.agentRoles.map(r=>r.name+': '+r.task).join(' / ')||'없음'}\n\n상대 내부 역할: ${(run.peerAgentRoles||[]).map(r=>r.name+': '+r.task).join(' / ')||'없음'}\n\n## 지시\n\n${run.prompt}\n\n## 사용 자료\n\n${(run.attachments||[]).map((f,i)=>`- [F${i+1}] ${f.name} (${f.chars}자)${f.warning?' · '+f.warning:''}`).join('\n')||'첨부 없음'}\n\n`+
+  return `# ${run.title}\n\n메인: ${run.main} · 상대: ${peerFor(run)||'없음'} · 상태: ${run.status} · ${run.createdAt}\n\n## 역할 설정\n\n메인: ${run.mainRole||mainDefault}\n\n상대: ${run.peerRole||peerDefault}\n\n메인 내부 역할: ${run.agentRoles.map(r=>r.name+': '+r.task).join(' / ')||'없음'}\n\n상대 내부 역할: ${(run.peerAgentRoles||[]).map(r=>r.name+': '+r.task).join(' / ')||'없음'}\n\n## 지시\n\n${run.prompt}\n\n## 사용 자료\n\n${(run.attachments||[]).map((f,i)=>`- [F${i+1}] ${f.name} (${f.chars}자)${f.warning?' · '+f.warning:''}`).join('\n')||'첨부 없음'}\n\n`+
     run.messages.map(m=>`## ${m.title} (${m.provider||'진행 기록'})\n\n${m.text}\n`).join('\n')+
     `\n## 최종 답변\n\n${run.final||'완료된 최종 답변이 없습니다.'}\n`;
 }
@@ -149,9 +152,9 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
         else run.final=await invoke(run,run.main,prefix+'메인 답변',`메인 역할:\n${run.mainRole||mainDefault}\n\n사용자가 메인 AI에게만 말하고 있다. 상대 AI와 서브 에이전트를 호출하지 마. 요청에 직접 답하고, 상대 검토를 수행했다고 말하지 마.\n사용자 지시:\n${task}\n\n실제 이전 대화:\n${await history()}\n\n최근 문서의 내용(참고자료):\n${run.fileContext||'없음'}`);
         run.status='completed';run.stage='메인 AI 답변 완료';return;
       }
-      let answer=await invoke(run,run.main,prefix+'메인 초안',`네가 맡을 메인 역할:\n${run.mainRole||mainDefault}\n\n현재는 메인 초안을 작성하는 단계다. 이 앱은 네 초안이 완료되면 상대 AI를 실제 호출하고, 그 회신을 다음 입력으로 네게 전달한다. 네가 지금 상대 AI를 별도로 호출할 필요는 없다. 아직 받지 않은 외부 회신은 받았다고 말하지 마.\n${delegationFor(roles)}\n\n사용자의 지시:\n${task}\n\n${followup?'실제 이전 대화:\n'+await history():''}\n\n초안과 확인이 필요한 가정만 900자 이내로 제시해.`,roles);
+      let answer=await invoke(run,run.main,prefix+(discuss?'메인 초안':'메인 답변'),`네가 맡을 메인 역할:\n${run.mainRole||mainDefault}\n\n${discuss?'현재는 메인 초안을 작성하는 단계다. 이 앱은 네 초안이 완료되면 상대 AI를 실제 호출하고, 그 회신을 다음 입력으로 네게 전달한다.':'현재는 메인 AI만 사용하는 작업이다. 다른 AI를 호출하거나 검토받았다고 말하지 말고 완성된 결과를 직접 작성해.'} 네가 지금 상대 AI를 별도로 호출할 필요는 없다. 아직 받지 않은 외부 회신은 받았다고 말하지 마.\n${delegationFor(roles)}\n\n사용자의 지시:\n${task}\n\n${followup?'실제 이전 대화:\n'+await history():''}\n\n${discuss?'초안과 확인이 필요한 가정만 900자 이내로 제시해.':'요청한 결과와 확인이 필요한 가정을 구분해 작성해.'}`,roles);
       transcript.push(`${run.main} 초안:\n${answer}`);
-      const peer=run.main==='codex'?'claude':'codex';
+      const peer=peerFor(run);
       const executionRecord=()=>JSON.stringify({main:run.main,peer,rounds:run.rounds,
         subagents:run.agents.map(a=>({provider:a.provider,name:a.name,status:a.status,findings:a.text||''}))});
       for(let round=1;limit===null||round<=limit;round++){
@@ -199,7 +202,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
       const url=new URL(req.url,`http://${host}`);
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.4.1'});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.5.0'});
       if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];
@@ -221,14 +224,15 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
         }
         if(url.pathname==='/api/runs'){
           if(active)throw fail(409,'진행 중인 작업을 마치거나 중지하세요.');
-          if(!providers.every(p=>connections[p].loggedIn))throw fail(409,'두 AI의 로그인을 먼저 확인하세요.');
           const settings=validateRun(body),id=randomUUID();
+          if(!connections[settings.main].loggedIn)throw fail(409,'선택한 메인 AI의 로그인을 확인하세요.');
+          if(settings.peer&&!connections[settings.peer].loggedIn)throw fail(409,'선택한 상대 AI의 로그인을 확인하세요. 메인만 사용하려면 상대 없음을 선택하세요.');
           const files=uploads.select(body.attachmentIds||[]);
           const run={id,...settings,attachmentIds:files.map(f=>f.id),attachments:files.map(({text,...meta})=>meta),followupCount:0,title:settings.prompt.slice(0,50),status:'running',stage:'메인 AI 준비',createdAt:new Date().toISOString(),messages:[],agents:[],files:[],final:'',error:''};
           runs.push(run);active={run,controller:new AbortController()};
-          message(run,'system',null,'작업 시작',`메인: ${run.main} · 메인 내부 ${run.agentRoles.length}개 · 상대 내부 ${run.peerAgentRoles.length}개 · 상대 모델과 ${run.rounds===null?'제한 없이':run.rounds+'회'} 왕복. 역할 설정·지시·자료·회신을 두 서비스에 전달합니다.`);
+          message(run,'system',null,'작업 시작',`메인: ${run.main} · 내부 ${run.agentRoles.length}개 · ${run.peer?'상대: '+run.peer+' · '+(run.rounds===null?'제한 없이':run.rounds+'회')+' 왕복':'상대 없음 · 메인 AI만 사용'}. 지시·자료·회신은 실제 선택한 AI 서비스에 전달합니다.`);
           try{await save();}catch{run.status='failed';run.error='작업 기록을 저장하지 못했습니다.';active=null;throw fail(500,run.error);}
-          execute(run).catch(()=>{});return json(202,{id});
+          execute(run,'',Boolean(run.peer)).catch(()=>{});return json(202,{id});
         }
         const followup=url.pathname.match(/^\/api\/runs\/([a-f0-9-]{36})\/messages$/);
         if(followup){
@@ -236,11 +240,18 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           const run=runs.find(r=>r.id===followup[1]);if(!run)throw fail(404,'작업을 찾지 못했습니다.');
           if(typeof body.message!=='string'||!body.message.trim()||body.message.length>20000)throw fail(400,'추가 지시는 1~20,000자로 입력하세요.');
           const discuss=dialogueRequested(body.message);
-          if(!connections[run.main].loggedIn||discuss&&!providers.every(p=>connections[p].loggedIn))throw fail(409,discuss?'두 AI의 로그인을 확인하세요.':'메인 AI의 로그인을 확인하세요.');
-          if(discuss)requestedRounds(body.message,run.rounds);
+          if(!connections[run.main].loggedIn)throw fail(409,'메인 AI의 로그인을 확인하세요.');
+          let peer=peerFor(run);
+          if(discuss){
+            if(body.peer!==undefined)peer=body.peer;
+            if(!providers.includes(peer)||peer===run.main)throw fail(400,'왕복할 상대 AI를 왼쪽에서 선택하세요.');
+            if(!connections[peer].loggedIn)throw fail(409,'선택한 상대 AI의 로그인을 확인하세요.');
+            requestedRounds(body.message,run.rounds);
+          }
           uploads.select(body.attachmentIds||[]);
           const files=uploads.select([...new Set([...(run.attachmentIds||[]),...(body.attachmentIds||[])])]);
           run.attachmentIds=files.map(f=>f.id);run.attachments=files.map(({text,...meta})=>meta);
+          if(discuss)run.peer=peer;
           run.followupCount=(run.followupCount||0)+1;run.status='running';run.error='';run.final='';run.finishedAt=null;
           active={run,controller:new AbortController()};
           message(run,'user',null,`추가 지시 ${run.followupCount}`,body.message.trim());

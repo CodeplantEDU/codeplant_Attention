@@ -5,10 +5,21 @@
   "mainRole": "교육 설계를 총괄하고 자료와 제안을 구분하며 최종안을 작성한다.",
   "peerRole": "실행 가능성과 시간 합계를 검토하고 빠진 조건과 질문을 제시한다.",
   "agentRoles": [
-    {"name": "교육 흐름", "task": "초보자가 따라갈 수 있는 순서와 시간 합계 확인"},
-    {"name": "시연 검토", "task": "연결 실패·근거 누락·실제로 보여줄 화면 점검"}
+    {
+      "name": "교육 흐름",
+      "task": "초보자가 따라갈 수 있는 순서와 시간 합계 확인"
+    },
+    {
+      "name": "시연 검토",
+      "task": "연결 실패·근거 누락·실제로 보여줄 화면 점검"
+    }
   ],
   "peerAgentRoles": [],
-  "models": {"codex": "", "claude": ""},
-  "attachmentIds": []
+  "models": {
+    "codex": "",
+    "claude": "",
+    "gemini": ""
+  },
+  "attachmentIds": [],
+  "peer": "claude"
 }

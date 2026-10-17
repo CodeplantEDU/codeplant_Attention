@@ -93,9 +93,26 @@ function helperContext(extra = {}) {
   const end = source.indexOf("$('#add-role').addEventListener");
   assert.ok(end > 0);
   vm.runInContext(source.slice(0, end), context);
-  const helpers = vm.runInContext('({readRoundSettings, clampPanelWidths, connectPanelResize, modelOptions, readSelectedModel, renderModelOptions})', context);
+  const helpers = vm.runInContext('({readRoundSettings, clampPanelWidths, connectPanelResize, modelOptions, readSelectedModel, renderModelOptions, updateControls})', context);
   return { context, helpers };
 }
+test('one connected main enables starting; only the selected peer is required for dialogue',()=>{
+  for(const main of ['codex','claude','gemini']){
+    const elements=new Map();
+    const $=selector=>{
+      if(!elements.has(selector))elements.set(selector,{value:'',children:[],options:[],textContent:''});
+      return elements.get(selector);
+    };
+    $('input[name="main"]:checked').value=main;
+    const {context,helpers}=helperContext({document:{querySelector:$,querySelectorAll:()=>[]}});
+    vm.runInContext(`currentState={connections:{${main}:{loggedIn:true}},runs:[],activeRunId:null}`,context);
+    helpers.updateControls();assert.equal($('#start-run').disabled,false);
+    assert.equal($('#main-agent-support').hidden,main!=='gemini');
+    $('#peer-select').value=main==='codex'?'gemini':'codex';
+    helpers.updateControls();assert.equal($('#start-run').disabled,true);
+    $('#peer-select').value='';helpers.updateControls();assert.equal($('#start-run').disabled,false);
+  }
+});
 
 test('round settings accept custom positive integers and unlimited conditions, rejecting invalid counts', () => {
   const { helpers } = helperContext();

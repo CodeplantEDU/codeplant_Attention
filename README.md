@@ -2,7 +2,7 @@
 
 AI를 활용해 과제를 수행하고, 여러 AI의 대화를 보며 결과를 개선하는 강의와 실행 프로그램입니다.
 
-**[LECTURE_1 시작하기](LECTURE_1/README.md)** — Codex·Claude Code 대화 스튜디오, 자료 업로드, 후속 대화, 2시간 핵심 시연 안내.
+**[LECTURE_1 시작하기](LECTURE_1/README.md)** — Codex·Claude Code·Gemini 대화 스튜디오, 자료 업로드, 후속 대화, 2시간 핵심 시연 안내.
 
 다운로드한 폴더를 Codex에서 열고 아래 문장을 입력하세요.
 

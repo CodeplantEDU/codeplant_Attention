@@ -3,9 +3,21 @@ import {existsSync} from 'node:fs';
 import {readFile,readdir,stat} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import {fileURLToPath} from 'node:url';
 
 const isFile=p=>{try{return existsSync(p);}catch{return false;}};
+export function geminiEntrypoint(env=process.env){
+  const override=env.DIALOGUE_GEMINI_SCRIPT;
+  if(override){if(!path.isAbsolute(override)||!isFile(override)||path.extname(override)!=='.js')throw Error('Gemini 실행 경로를 확인하세요.');return override;}
+  const roots=[env.APPDATA&&path.join(env.APPDATA,'npm','node_modules'),path.join(path.dirname(process.execPath),'node_modules'),...(env.PATH||'').split(path.delimiter).map(p=>path.join(p,'node_modules'))].filter(Boolean);
+  for(const root of roots)for(const entry of ['bundle/gemini.js','dist/index.js']){
+    const file=path.join(root,'@google','gemini-cli',entry);if(isFile(file))return file;
+  }
+  throw Error('Gemini CLI를 찾지 못했습니다. npm install -g @google/gemini-cli로 설치하세요.');
+}
+export function geminiHasLogin(env=process.env){return isFile(path.join(env.GEMINI_CLI_HOME||path.join(os.homedir(),'.gemini'),'oauth_creds.json'));}
 export function executable(provider,env=process.env){
+  if(provider==='gemini'){geminiEntrypoint(env);return process.execPath;}
   const name=provider==='codex'?'codex.exe':'claude.exe';
   const override=env[provider==='codex'?'DIALOGUE_CODEX_EXE':'DIALOGUE_CLAUDE_EXE'];
   if(override){if(!path.isAbsolute(override)||!isFile(override)||/\.(cmd|bat|ps1)$/i.test(override))throw Error('실행 파일 경로를 확인하세요.');return override;}
@@ -24,9 +36,10 @@ export function executable(provider,env=process.env){
 export function loginEnvironment(){
   const env={...process.env};
   // Subscription logins remain in the official CLIs; never copy their credentials.
-  for(const k of ['OPENAI_API_KEY','CODEX_API_KEY','ANTHROPIC_API_KEY','CLAUDE_CODE_SIMPLE'])delete env[k];
+  for(const k of ['OPENAI_API_KEY','CODEX_API_KEY','ANTHROPIC_API_KEY','CLAUDE_CODE_SIMPLE','GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_APPLICATION_CREDENTIALS','GOOGLE_GENAI_USE_VERTEXAI'])delete env[k];
   return env;
 }
+export function geminiEnvironment(){return {...loginEnvironment(),GEMINI_CLI_NO_RELAUNCH:'true',GEMINI_CLI_SYSTEM_SETTINGS_PATH:fileURLToPath(new URL('./gemini-settings.json',import.meta.url))};}
 function kill(child){
   if(!child.pid||child.exitCode!==null)return;
   if(process.platform==='win32'){
@@ -82,6 +95,14 @@ async function codexModels(exe,cwd){
 export async function connection(provider,cwd){
   try{
     const exe=executable(provider);
+    if(provider==='gemini'){
+      const v=await capture(exe,[geminiEntrypoint(),'--version'],{cwd});
+      if(v.code!==0)throw Error('Gemini 실행 실패');
+      const loggedIn=geminiHasLogin();
+      return {installed:true,loggedIn,version:v.out.trim().slice(0,70),message:loggedIn?'저장된 Google 로그인 사용 · 유효성은 호출 시 확인':'Google 계정 로그인이 필요합니다.',loginRunning:false,
+        models:['gemini-2.5-pro','gemini-2.5-flash','gemini-3.1-pro-preview','gemini-3-flash-preview'].map(id=>({id,label:id})),
+        modelListMessage:'공식 CLI 모델 이름입니다. 계정별 사용 가능 여부는 호출 시 확인합니다. Gemini 내부 에이전트 연결은 지원하지 않습니다.'};
+    }
     const [v,a]=await Promise.all([capture(exe,['--version'],{cwd}),capture(exe,provider==='codex'?['login','status']:['auth','status'],{cwd})]);
     let loggedIn=false;
     if(provider==='codex')loggedIn=a.code===0&&/Logged in/i.test(a.out+a.err);
@@ -99,6 +120,10 @@ export async function connection(provider,cwd){
 }
 
 export function argumentsFor(provider,{roles=[],model=''}={}){
+  if(provider==='gemini'){
+    if(roles.length)throw Error('Gemini 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
+    return [geminiEntrypoint(),'--output-format','stream-json','--approval-mode','default',...(model?['--model',model]:[]),'-p','제공된 사용자 요청에 답하세요. 도구를 사용하지 마세요.'];
+  }
   if(provider==='codex'){
     return ['exec','--json','--ignore-user-config','--skip-git-repo-check','--sandbox','read-only',
       '-c',`features.multi_agent=${roles.length>0}`,'-c','features.shell_tool=false','-c','features.apps=false',
@@ -126,6 +151,16 @@ export function parseEvent(provider,event,emit,state){
     if(item?.type==='collab_tool_call'){
       for(const id of item.receiver_thread_ids||[])emit({kind:'agent',id,name:id,status:item.status==='completed'?'completed':'running'});
     }
+  }else if(provider==='gemini'){
+    if(event.type==='init'){state.model=event.model;state.threadId=event.session_id;}
+    if(event.type==='message'&&event.role==='assistant'){
+      state.text=event.delta?state.text+(event.content||''):(event.content||'');emit({kind:'mainText',text:state.text});
+    }
+    if(event.type==='result'){
+      if(event.status!=='success')state.error='Gemini 호출이 실패했습니다. Google 로그인·사용량과 모델 설정을 확인하세요.';
+      else state.completed=true;
+    }
+    if(event.type==='error'&&event.severity==='error')state.error='Gemini 호출이 실패했습니다. Google 로그인·사용량과 모델 설정을 확인하세요.';
   }else {
     if(event.type==='system'&&event.subtype==='init'){state.model=event.model;state.threadId=event.session_id;}
     if(event.type==='system'&&event.subtype==='task_started'){
@@ -182,6 +217,7 @@ export function parseOwnedActivity(record,emit){
 }
 export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEvent=()=>{},timeout=240000}){
   if(signal?.aborted)throw Error('중지됐습니다.');
+  if(provider==='gemini'&&!geminiHasLogin())throw Error('Gemini의 Google 계정 로그인을 먼저 완료하세요.');
   const state={text:'',completed:false,error:'',threadId:null,model,agentCount:0};
   const seen=new Set();let scanned=0,scanning=false,rollout=null;
   const emit=e=>{const key=JSON.stringify(e);if(!seen.has(key)){seen.add(key);onEvent(e);}};
@@ -201,7 +237,7 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
   }
   const startedAt=Date.now();
   const result=await new Promise((resolve,reject)=>{
-    const child=spawn(executable(provider),argumentsFor(provider,{roles,model}),{cwd,env:loginEnvironment(),windowsHide:true,shell:false});
+    const child=spawn(executable(provider),argumentsFor(provider,{roles,model}),{cwd,env:provider==='gemini'?geminiEnvironment():loginEnvironment(),windowsHide:true,shell:false});
     let buffer='',size=0,settled=false;
     const timer=setTimeout(()=>{state.error='응답 대기 시간을 초과했습니다.';kill(child);},timeout);
     const poll=setInterval(()=>scan().catch(()=>{}),600);
@@ -231,6 +267,15 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
 }
 
 export function beginLogin(provider,cwd,onUrl,onExit){
+  if(provider==='gemini'){
+    const quote=s=>"'"+s.replaceAll("'","''")+"'";
+    const command=`& ${quote(process.execPath)} ${quote(geminiEntrypoint())}`;
+    const encoded=Buffer.from(command,'utf16le').toString('base64');
+    const launch=`$p=Start-Process powershell.exe -ArgumentList '-NoProfile','-NoExit','-EncodedCommand','${encoded}' -WorkingDirectory ${quote(cwd)} -WindowStyle Normal -PassThru; $p.WaitForExit()`;
+    const child=spawn('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(launch,'utf16le').toString('base64')],{cwd,env:loginEnvironment(),windowsHide:true,stdio:'ignore',shell:false});
+    child.on('error',()=>onExit(false));child.on('close',()=>onExit(geminiHasLogin()));
+    return ()=>kill(child);
+  }
   const args=provider==='codex'?['login']:['auth','login','--claudeai'];
   const child=spawn(executable(provider),args,{cwd,env:loginEnvironment(),windowsHide:true,shell:false});
   let data='';const timer=setTimeout(()=>kill(child),300000);

@@ -1,0 +1,12 @@
+{
+  "security": {"auth": {"selectedType": "oauth-personal"}},
+  "tools": {"core": ["attention_no_tools"], "exclude": ["*"]},
+  "admin": {"mcp": {"enabled": false}, "extensions": {"enabled": false}, "skills": {"enabled": false}},
+  "hooksConfig": {"enabled": false},
+  "skills": {"enabled": false},
+  "experimental": {"enableAgents": false},
+  "context": {"fileName": ".attention-context-disabled", "includeDirectoryTree": false, "includeDirectories": [], "memoryBoundaryMarkers": []},
+  "advanced": {"ignoreLocalEnv": true},
+  "telemetry": {"enabled": false},
+  "billing": {"overageStrategy": "never"}
+}

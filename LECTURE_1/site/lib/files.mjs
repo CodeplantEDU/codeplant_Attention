@@ -10,7 +10,7 @@ const execute=promisify(execFile);
 export const fileTypes=new Set(['docx','pdf','pptx','xlsx','md','txt','csv','json','html','css','js','ts','py','sql','yaml']);
 export function requestedFormats(text,previous=[]){
   if(/(?:만들지|생성하지|저장하지|변환하지)\s*(?:마|말|않)/.test(text))return [];
-  const patterns={docx:/(?:\bword\b|\bdocx\b|워드)/i,pdf:/\bpdf\b/i,pptx:/(?:\bpptx?\b|파워포인트)/i,xlsx:/(?:\bxlsx?\b|\bexcel\b|엑셀)/i,md:/(?:\bmd\b|마크다운)/i,txt:/(?:\btxt\b|텍스트\s*파일)/i,csv:/\bcsv\b/i,json:/\bjson\b/i,html:/\bhtml\b/i,css:/\bcss\b/i,js:/\b(?:js|javascript)\b/i,ts:/\btypescript\b|\.ts\b/i,py:/\bpython\b|파이썬|\.py\b/i,sql:/\bsql\b/i,yaml:/\bya?ml\b/i};
+  const patterns={docx:/(?:\bword\b|\bdocx\b|워드)/i,pdf:/\bpdf\b/i,pptx:/(?:\bpptx?\b|파워포인트)/i,xlsx:/(?:\bxlsx?\b|\bexcel\b|엑셀)/i,md:/(?:\bmd\b|\bmarkdown\b|마크다운)/i,txt:/(?:\btxt\b|텍스트\s*파일)/i,csv:/\bcsv\b/i,json:/\bjson\b/i,html:/\bhtml\b/i,css:/\bcss\b/i,js:/\b(?:js|javascript)\b/i,ts:/\btypescript\b|\.ts\b/i,py:/\bpython\b|파이썬|\.py\b/i,sql:/\bsql\b/i,yaml:/\bya?ml\b/i};
   const formats=Object.entries(patterns).filter(([,pattern])=>{const found=pattern.exec(text);return found&&!/^\s*(?:말고|제외|아닌)/.test(text.slice(found.index+found[0].length));}).map(([ext])=>ext);
   if(formats.length&&/(?:만들|생성|작성|제작|저장|변환|내려받|다운로드|줘|주세요|create|generate|export|save|파일|형식)/i.test(text))return formats;
   if(previous.length&&/(?:수정|고쳐|바꿔|보완|추가)/.test(text))return [...new Set(previous.slice(-1).map(f=>path.extname(f.name).slice(1)))];

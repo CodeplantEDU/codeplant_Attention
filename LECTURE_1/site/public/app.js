@@ -1,7 +1,9 @@
 'use strict';
 
 const $ = (selector, root = document) => root.querySelector(selector);
-const providerNames = { codex: 'Codex', claude: 'Claude Code' };
+const providerNames = { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini' };
+const providers = Object.keys(providerNames);
+let mainChosen = false;
 const statusNames = { running: '진행 중', completed: '완료', failed: '실패', stopped: '중지됨', interrupted: '중단됨', pending: '대기', queued: '대기', waiting: '대기', starting: '시작 중' };
 let currentState = null;
 let selectedRunId = null;
@@ -365,7 +367,7 @@ function renderRunAttachments(run) {
 }
 
 function renderRunSettings(run) {
-  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition, run?.models]);
+  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition, run?.models, run?.peer]);
   if (signature === lastRunSettings) return;
   lastRunSettings = signature;
   $('#run-settings').hidden = !run;
@@ -373,12 +375,13 @@ function renderRunSettings(run) {
   list.replaceChildren();
   if (!run) return;
   const rounds = run.rounds === null ? '횟수 제한 없이' : `${run.rounds || 1}회 왕복`;
-  list.append(node('p', 'run-round-summary', rounds + (run.rounds === null ? ` · 종료: ${run.stopCondition || '수동 중지'}` : '')));
-  const peer = run.main === 'codex' ? 'claude' : 'codex';
+  list.append(node('p', 'run-round-summary', (run.peer === null ? '메인 AI만 사용' : rounds) + (run.peer !== null && run.rounds === null ? ` · 종료: ${run.stopCondition || '수동 중지'}` : '')));
+  const peer = run.peer === undefined ? (run.main === 'codex' ? 'claude' : 'codex') : run.peer;
   for (const [label, provider, text, roles] of [
     ['메인', run.main, run.mainRole, run.agentRoles || []],
     ['상대', peer, run.peerRole, run.peerAgentRoles || []]
   ]) {
+    if (!provider) continue;
     const section = node('section', 'run-setting-side');
     section.append(node('h4', '', `${providerNames[provider] || provider} · ${label} 역할`));
     section.append(node('small', 'run-model-label', '선택 모델: ' + (run.models?.[provider] || 'CLI 기본값 · 모델 ID 지정 안 함')));
@@ -476,9 +479,11 @@ async function uploadFiles(files) {
 
 function updateControls() {
   const active = activeRun();
-  const ready = ['codex', 'claude'].every(provider => currentState?.connections?.[provider]?.loggedIn);
+  const main = $('input[name="main"]:checked')?.value || 'codex';
+  const peer = $('#peer-select').value;
+  const ready = Boolean(currentState?.connections?.[main]?.loggedIn) && (!peer || Boolean(currentState?.connections?.[peer]?.loggedIn));
   $('#start-run').disabled = actionPending || uploading || Boolean(active) || !ready;
-  $('#start-run').title = active ? '현재 작업을 마치거나 중지한 뒤 시작할 수 있습니다.' : !ready ? '두 AI의 설치와 로그인을 먼저 확인하세요.' : '';
+  $('#start-run').title = active ? '현재 작업을 마치거나 중지한 뒤 시작할 수 있습니다.' : !ready ? '선택한 메인과 상대 AI의 설치·로그인을 확인하세요. 상대 없음은 메인만 연결하면 됩니다.' : '';
   const label = actionPending ? '요청 중…' : active ? '작업이 진행 중입니다' : '대화 시작';
   setText($('#start-run span'), label);
   $('#add-role').disabled = $('#role-list').children.length >= 3;
@@ -491,15 +496,20 @@ function updateControls() {
   $('#followup-message').disabled = actionPending || Boolean(active);
   $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || !mainReady || !$('#followup-message').value.trim();
   setText($('#send-followup'), actionPending ? '요청 중…' : active ? '대화 진행 중' : '후속 메시지 보내기');
-  const main = $('input[name="main"]:checked')?.value || 'codex';
-  const peer = main === 'codex' ? 'claude' : 'codex';
-  setText($('#peer-name'), providerNames[peer]);
+  for (const option of $('#peer-select').options) option.disabled = option.value === main;
+  $('#dialogue-settings').hidden = !peer;
+  $('#peer-role').disabled = !peer;
+  $('#main-agent-support').hidden = main !== 'gemini';
+  $('#role-list').hidden = main === 'gemini';
+  $('#add-role').hidden = main === 'gemini';
+  $('.peer-agent-settings').hidden = !peer || peer === 'gemini';
+  setText($('#peer-name'), providerNames[peer] || '상대 AI');
   document.querySelectorAll('.main-provider-name').forEach(element => setText(element, providerNames[main]));
-  document.querySelectorAll('.peer-provider-name').forEach(element => setText(element, providerNames[peer]));
+  document.querySelectorAll('.peer-provider-name').forEach(element => setText(element, providerNames[peer] || '상대 AI'));
 }
 
 function renderConnections() {
-  for (const provider of ['codex', 'claude']) {
+  for (const provider of providers) {
     const connection = currentState.connections?.[provider] || {};
     renderModelOptions(provider, connection);
     const card = $(`[data-provider="${provider}"]`);
@@ -617,6 +627,10 @@ function render() {
     selectedRunId = currentState.activeRunId || currentState.runs?.at(-1)?.id || null;
     initialSelection = false;
   }
+  if (!mainChosen) {
+    const connected = providers.find(p => currentState.connections?.[p]?.loggedIn);
+    if (connected) { $(`input[name="main"][value="${connected}"]`).checked = true; mainChosen = true; }
+  }
   const run = getSelectedRun();
   renderConnections();
   renderUploads();
@@ -670,9 +684,10 @@ async function action(callback) {
 
 $('#add-role').addEventListener('click', () => addRole());
 $('#rounds').addEventListener('change', updateRoundFields);
-for (const provider of ['codex', 'claude']) $(`#${provider}-model-select`).addEventListener('change', () => updateModelCustomField(provider));
+$('#peer-select').addEventListener('change', updateControls);
+for (const provider of providers) $(`#${provider}-model-select`).addEventListener('change', () => updateModelCustomField(provider));
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
-document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', updateControls));
+document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', () => { mainChosen = true; if ($('#peer-select').value === input.value) $('#peer-select').value = ''; updateControls(); }));
 $('#fill-sample').addEventListener('click', () => {
   $('#prompt').value = 'Attention 참여자를 위한 2시간 AI 특강안을 작성해줘. 핵심은 한 AI를 메인으로 두고 다른 AI와 대화하며 결과물을 개선하는 방법이야.\n\n서브 에이전트는 교육 흐름과 시연 실패 가능성을 나누어 검토해줘. 상대 AI는 초안의 약점을 지적하고, 메인 AI는 수용·보류 이유를 설명한 뒤 최종 시간표와 사전 준비 목록을 정리해줘. 확인되지 않은 기능이나 효과는 사실로 단정하지 마.';
   $('#prompt').focus();
@@ -691,8 +706,10 @@ $('#run-form').addEventListener('submit', event => {
   if (actionPending || uploading || activeRun()) return;
   const prompt = $('#prompt').value.trim();
   if (!prompt) { $('#prompt').focus(); return; }
-  const agentRoles = readRoles('#role-list');
-  const peerAgentRoles = readRoles('#peer-role-list');
+  const main = $('input[name="main"]:checked').value;
+  const peer = $('#peer-select').value || null;
+  const agentRoles = main === 'gemini' ? [] : readRoles('#role-list');
+  const peerAgentRoles = !peer || peer === 'gemini' ? [] : readRoles('#peer-role-list');
   if ([...agentRoles, ...peerAgentRoles].some(role => !role.name || !role.task)) { notice('양쪽 서브 에이전트의 역할 이름과 할 일을 입력해주세요.'); return; }
   const mainRole = $('#main-role').value.trim();
   const peerRole = $('#peer-role').value.trim();
@@ -701,10 +718,10 @@ $('#run-form').addEventListener('submit', event => {
   let models;
   try { roundSettings = readRoundSettings($('#rounds').value, $('#custom-rounds').value, $('#stop-condition').value); }
   catch (error) { notice(error.message); return; }
-  try { models = { codex: readSelectedModel('codex'), claude: readSelectedModel('claude') }; }
+  try { models = Object.fromEntries(providers.map(p => [p, p === main || p === peer ? readSelectedModel(p) : ''])); }
   catch (error) { notice(error.message); return; }
   action(async () => {
-    const result = await request('/api/runs', { prompt, main: $('input[name="main"]:checked').value, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models, attachmentIds: attachmentIds() });
+    const result = await request('/api/runs', { prompt, main, peer, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models, attachmentIds: attachmentIds() });
     selectedRunId = result.id;
     initialSelection = false;
   });
@@ -757,7 +774,7 @@ $('#followup-form').addEventListener('submit', event => {
   const message = $('#followup-message').value.trim();
   if (!run || !message || activeRun() || actionPending || uploading) return;
   action(async () => {
-    await request(`/api/runs/${encodeURIComponent(run.id)}/messages`, { message, attachmentIds: attachmentIds() });
+    await request(`/api/runs/${encodeURIComponent(run.id)}/messages`, { message, peer: $('#peer-select').value || undefined, attachmentIds: attachmentIds() });
     followupDrafts.delete(run.id);
     $('#followup-message').value = '';
   });
@@ -773,7 +790,7 @@ $('#check-connections').addEventListener('click', () => action(async () => {
 }));
 document.querySelectorAll('[data-login]').forEach(button => button.addEventListener('click', () => action(async () => {
   await request('/api/login', { provider: button.dataset.login });
-  notice('로그인을 시작했습니다. 열리는 인증 화면에서 로그인한 뒤 연결 상태를 확인해주세요.', true);
+  notice('로그인을 시작했습니다. 열리는 인증 화면에서 로그인한 뒤 연결 상태를 확인해주세요. Gemini는 터미널에서 Sign in with Google을 선택하고, 완료 후 터미널을 닫거나 새로 확인을 누르세요.', true);
 })));
 
 connectRoleEditor('main', mainRolePresets);
@@ -781,6 +798,6 @@ connectRoleEditor('peer', peerRolePresets);
 addRole(agentRolePresets.analysis.name, agentRolePresets.analysis.task, 'main', 'analysis');
 addRole(agentRolePresets.review.name, agentRolePresets.review.task, 'main', 'review');
 updateRoundFields();
-for (const provider of ['codex', 'claude']) updateModelCustomField(provider);
+for (const provider of providers) updateModelCustomField(provider);
 connectPanelResize();
 poll();

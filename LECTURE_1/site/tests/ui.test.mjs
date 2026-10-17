@@ -108,6 +108,9 @@ test('one connected main enables starting; only the selected peer is required fo
     vm.runInContext(`currentState={connections:{${main}:{loggedIn:true}},runs:[],activeRunId:null}`,context);
     helpers.updateControls();assert.equal($('#start-run').disabled,false);
     assert.equal($('#main-agent-support').hidden,main!=='gemini');
+    const unused=main==='codex'?'gemini':'codex';
+    $(`#${unused}-model-select`).value='__custom__';
+    helpers.updateControls();assert.equal($(`#${unused}-model`).disabled,true);assert.equal($(`#${unused}-model`).required,false);
     $('#peer-select').value=main==='codex'?'gemini':'codex';
     helpers.updateControls();assert.equal($('#start-run').disabled,true);
     $('#peer-select').value='';helpers.updateControls();assert.equal($('#start-run').disabled,false);

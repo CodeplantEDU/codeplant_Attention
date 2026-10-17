@@ -500,9 +500,18 @@ function updateControls() {
   $('#dialogue-settings').hidden = !peer;
   $('#peer-role').disabled = !peer;
   $('#main-agent-support').hidden = main !== 'gemini';
+  $('.group-description').hidden = main === 'gemini';
   $('#role-list').hidden = main === 'gemini';
   $('#add-role').hidden = main === 'gemini';
   $('.peer-agent-settings').hidden = !peer || peer === 'gemini';
+  document.querySelectorAll('#role-list input, #role-list textarea, #role-list select').forEach(element => { element.disabled = main === 'gemini'; });
+  document.querySelectorAll('#peer-role-list input, #peer-role-list textarea, #peer-role-list select').forEach(element => { element.disabled = !peer || peer === 'gemini'; });
+  for (const provider of providers) {
+    const needed = provider === main || provider === peer;
+    const custom = $(`#${provider}-model-select`).value === '__custom__';
+    $(`#${provider}-model`).disabled = !needed || !custom;
+    $(`#${provider}-model`).required = needed && custom;
+  }
   setText($('#peer-name'), providerNames[peer] || '상대 AI');
   document.querySelectorAll('.main-provider-name').forEach(element => setText(element, providerNames[main]));
   document.querySelectorAll('.peer-provider-name').forEach(element => setText(element, providerNames[peer] || '상대 AI'));
@@ -685,7 +694,7 @@ async function action(callback) {
 $('#add-role').addEventListener('click', () => addRole());
 $('#rounds').addEventListener('change', updateRoundFields);
 $('#peer-select').addEventListener('change', updateControls);
-for (const provider of providers) $(`#${provider}-model-select`).addEventListener('change', () => updateModelCustomField(provider));
+for (const provider of providers) $(`#${provider}-model-select`).addEventListener('change', () => { updateModelCustomField(provider); updateControls(); });
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
 document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', () => { mainChosen = true; if ($('#peer-select').value === input.value) $('#peer-select').value = ''; updateControls(); }));
 $('#fill-sample').addEventListener('click', () => {

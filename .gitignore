@@ -1,0 +1,14 @@
+**/data/
+**/uploads/
+**/sessions/
+**/node_modules/
+**/__pycache__/
+**/tmp/
+**/.env
+**/.env.*
+*.log
+*.pyc
+*.pem
+*.key
+.DS_Store
+Thumbs.db

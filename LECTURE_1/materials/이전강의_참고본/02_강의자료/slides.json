@@ -1,0 +1,779 @@
+[
+  {
+    "title": "Codex가 Claude와 Gemini를\n불러 대화하게 하기",
+    "minutes": 2,
+    "layout": "cover",
+    "refs": [],
+    "lead": "ATTENTION 추가 특강 · 2시간 핵심 시연형",
+    "body": [
+      "Codex가 질문하고, 회신을 읽고, 다시 답합니다"
+    ],
+    "action": "Codex 작업 폴더와 대화 기록을 먼저 연다.",
+    "check": "강의 주제가 AI 간 대화 연결임을 말한다.",
+    "fallback": "연결 구조 그림을 사용한다.",
+    "sources": []
+  },
+  {
+    "title": "오늘 보여줄 장면",
+    "minutes": 3,
+    "layout": "flow",
+    "refs": [],
+    "lead": "Codex 질문 → Claude 반론 → Codex 답변 → Claude 재답변",
+    "body": [
+      "답변을 다시 전달하며 두 왕복을 이어갑니다",
+      "Gemini가 앞선 대화를 읽고 합류합니다",
+      "회사 분석은 이 대화의 연습 소재입니다"
+    ],
+    "action": "대화 파일의 발신자와 수신자를 차례로 가리킨다.",
+    "check": "한 번의 답변 받기와 왕복 대화를 구분한다.",
+    "fallback": "재생 대본을 교육용 예시로 표시해 읽는다.",
+    "sources": []
+  },
+  {
+    "title": "누가 대화를 진행할까",
+    "minutes": 5,
+    "layout": "columns",
+    "refs": [
+      "C1",
+      "G1"
+    ],
+    "columns": [
+      [
+        "Codex",
+        "질문·반박 작성\n호출·기록·종료 결정"
+      ],
+      [
+        "Claude·Gemini",
+        "받은 자료로 실제 회신\n서로의 답변 검토"
+      ],
+      [
+        "사람",
+        "주제·전송 범위 결정\n최종 판단·사용 결정"
+      ]
+    ],
+    "lead": "외부 AI의 답을 Codex가 받아 다음 말을 만듭니다",
+    "body": [
+      "역할은 수업 설계이며 모델 성능 순위가 아닙니다"
+    ],
+    "action": "메인과 외부 답변자의 역할을 설명한다.",
+    "check": "Codex 혼자 외부 모델 역할을 연기하지 않음을 확인한다.",
+    "fallback": "각 역할을 한 문장씩 읽는다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "G1",
+        "title": "Gemini 비대화형 호출",
+        "url": "https://geminicli.com/docs/cli/headless/"
+      }
+    ]
+  },
+  {
+    "title": "연결의 실제 경로",
+    "minutes": 4,
+    "layout": "flow",
+    "refs": [
+      "C1",
+      "G1"
+    ],
+    "lead": "Codex → 셸 도구 → 전달 프로그램 → 외부 CLI → 회신 파일",
+    "body": [
+      "relay.py는 메시지를 전달하고 기록합니다",
+      "다음 발언은 Codex가 실제 회신을 읽고 작성합니다",
+      "설치만으로 자동 대화가 시작되지는 않습니다"
+    ],
+    "action": "tools/relay.py와 messages·sessions 폴더를 연다.",
+    "check": "프로그램과 모델의 역할을 구분한다.",
+    "fallback": "슬라이드의 연결 경로를 짚는다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "G1",
+        "title": "Gemini 비대화형 호출",
+        "url": "https://geminicli.com/docs/cli/headless/"
+      }
+    ]
+  },
+  {
+    "title": "수업 전에 준비할 프로그램",
+    "minutes": 4,
+    "layout": "table",
+    "refs": [
+      "C3",
+      "G3",
+      "G4"
+    ],
+    "lead": "강사 환경을 먼저 준비하고 학생은 흐름을 따라갑니다",
+    "table": [
+      [
+        "프로그램",
+        "사용할 일"
+      ],
+      [
+        "Codex",
+        "대화를 진행하는 메인"
+      ],
+      [
+        "Claude Code",
+        "핵심 왕복 대화 상대"
+      ],
+      [
+        "Gemini CLI · Node 20+",
+        "세 번째 관점 합류"
+      ],
+      [
+        "Python 3.10+",
+        "입력 전달과 기록 저장"
+      ]
+    ],
+    "action": "프로그램과 로그인 안내를 보여준다. 설치는 사전에 마친다.",
+    "check": "로그인·사용량은 각 계정 조건임을 말한다.",
+    "fallback": "설치 대신 시연과 재생을 사용한다.",
+    "sources": [
+      {
+        "id": "C3",
+        "title": "Claude 설치",
+        "url": "https://code.claude.com/docs/en/setup"
+      },
+      {
+        "id": "G3",
+        "title": "Gemini 설치",
+        "url": "https://geminicli.com/docs/get-started/installation/"
+      },
+      {
+        "id": "G4",
+        "title": "Gemini 인증",
+        "url": "https://geminicli.com/docs/get-started/authentication/"
+      }
+    ]
+  },
+  {
+    "title": "Claude 설치와 본인 로그인",
+    "minutes": 4,
+    "layout": "code",
+    "refs": [
+      "C3"
+    ],
+    "lead": "설치·로그인·응답 확인은 서로 다른 단계입니다",
+    "code": "claude --version\nclaude auth login --claudeai",
+    "body": [
+      "공식 설치 링크는 연결 안내 파일에 있습니다",
+      "개인 인증 화면은 수업 화면 공유 전에 마칩니다"
+    ],
+    "action": "사전 준비한 Claude 버전을 보여주고 인증 완료 여부만 확인한다.",
+    "check": "버전 출력만으로 응답 성공이라고 하지 않는다.",
+    "fallback": "기존 실제 검토 기록과 새 회신 파일을 사용한다.",
+    "sources": [
+      {
+        "id": "C3",
+        "title": "Claude 설치",
+        "url": "https://code.claude.com/docs/en/setup"
+      }
+    ]
+  },
+  {
+    "title": "Codex에게 넣을 첫 지시문",
+    "minutes": 3,
+    "layout": "quote",
+    "refs": [],
+    "lead": "“실제 Claude를 호출하고, 회신을 읽은 뒤\n네 반박을 다시 보내 두 왕복으로 대화해줘.”",
+    "body": [
+      "시작문 파일을 그대로 사용합니다",
+      "공유 가능한 자료와 종료 조건을 함께 줍니다"
+    ],
+    "action": "01_Codex에_넣을_시작문.md를 Codex에 붙여 넣는다.",
+    "check": "누가 진행하고 몇 번 주고받을지 찾는다.",
+    "fallback": "시작문을 화면으로 읽는다.",
+    "prompt": "01_Codex에_넣을_시작문.md",
+    "sources": []
+  },
+  {
+    "title": "시연 1 · Codex가 Claude를 부르기",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [
+      "C1"
+    ],
+    "lead": "먼저 보낼 메시지를 파일로 준비합니다",
+    "code": "python tools/relay.py check\npython tools/relay.py prepare --to claude\n  --message messages/01_첫질문.md",
+    "body": [
+      "실제 명령은 실행안내에서 한 줄로 복사합니다"
+    ],
+    "action": "Codex가 check와 prepare를 실행하게 한다.",
+    "check": "첫 질문과 수신자가 packet.md에 있는지 본다.",
+    "fallback": "준비된 실제대화 패킷을 연다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      }
+    ]
+  },
+  {
+    "title": "Claude에게 무엇이 전달될까",
+    "minutes": 5,
+    "layout": "columns",
+    "refs": [],
+    "lead": "이번에는 공개 연습 텍스트만 보냅니다",
+    "columns": [
+      [
+        "이번 입력",
+        "공개 연습 자료\nCodex의 첫 질문"
+      ],
+      [
+        "다음 입력",
+        "이전 질문·실제 회신\nCodex의 새 답변"
+      ]
+    ],
+    "body": [
+      "자료와 이전 대화는 다음 수신 서비스가 읽습니다"
+    ],
+    "action": "sessions/live/turn-001/packet.md 전체를 열어 확인한다.",
+    "check": "Claude에게 보내는 실제 텍스트를 찾는다.",
+    "fallback": "공개 사례만 담긴 실제 패킷을 사용한다.",
+    "sources": []
+  },
+  {
+    "title": "실제 호출을 실행하기",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [
+      "C1",
+      "C2"
+    ],
+    "lead": "명령 실행 뒤 실제 결과가 돌아오는지 확인합니다",
+    "code": "python tools/relay.py send --turn 1 --send",
+    "body": [
+      "완료: reply.md와 status=completed",
+      "실패: failed 또는 blocked, 회신을 꾸미지 않음"
+    ],
+    "action": "Codex가 send를 실행하고 완료 파일을 읽게 한다.",
+    "check": "실행했다는 말과 완료된 회신을 구별한다.",
+    "fallback": "90초 넘으면 저장된 실제 회신으로 이어간다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "C2",
+        "title": "Claude CLI 옵션",
+        "url": "https://code.claude.com/docs/en/cli-reference"
+      }
+    ]
+  },
+  {
+    "title": "Claude의 첫 답변을 Codex가 읽기",
+    "minutes": 5,
+    "layout": "table",
+    "refs": [
+      "L1"
+    ],
+    "lead": "요약하기 전에 회신 원문을 확인합니다",
+    "table": [
+      [
+        "Codex가 할 일",
+        "남길 내용"
+      ],
+      [
+        "수용",
+        "어떤 지적을 왜 받아들이는가"
+      ],
+      [
+        "반박·보류",
+        "어떤 근거와 범위로 답하는가"
+      ],
+      [
+        "재질문",
+        "다음 회신에서 무엇을 확인할까"
+      ]
+    ],
+    "action": "실제 reply.md를 읽고 세 항목을 Codex에게 작성시킨다.",
+    "check": "외부 회신을 모두 수용하지 않는다.",
+    "fallback": "실제 두 차례 검토의 수용·기각을 보여준다.",
+    "sources": [
+      {
+        "id": "L1",
+        "title": "앞선 실제 Codex Claude 검토",
+        "url": "05_사례/기존_실제검토_요약.md"
+      }
+    ]
+  },
+  {
+    "title": "시연 2 · Codex가 자기 답변 쓰기",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [],
+    "lead": "이번에는 Codex가 답할 차례입니다",
+    "code": "messages/02_Codex_답변.md",
+    "body": [
+      "Claude의 지적에 대한 실제 답변을 씁니다",
+      "서식의 빈칸을 채운 뒤 새 파일로 저장합니다",
+      "앞선 회신과 연결되는 질문 하나를 남깁니다"
+    ],
+    "action": "재질문 지시문으로 Codex가 실제 답변 파일을 작성하게 한다.",
+    "check": "직전 회신에 대한 답인지 확인한다.",
+    "fallback": "이번 실제대화에서 작성한 Codex 답변을 읽는다.",
+    "prompt": "02_Codex에_넣을_재질문.md",
+    "sources": []
+  },
+  {
+    "title": "Claude에게 Codex 답변을 다시 보내기",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [
+      "C1"
+    ],
+    "lead": "이전 대화와 새 답변이 함께 입력됩니다",
+    "code": "python tools/relay.py prepare --to claude\n  --message messages/02_Codex_답변.md\npython tools/relay.py send --turn 2 --send",
+    "body": [
+      "메시지를 새로 보내야 왕복 대화가 이어집니다"
+    ],
+    "action": "두 번째 packet.md에 첫 회신과 Codex 답변이 들어 있는지 확인하고 보낸다.",
+    "check": "이전 답변을 전달하지 않은 채 아는 척하지 않는다.",
+    "fallback": "저장된 두 번째 실제 회신으로 이어간다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      }
+    ]
+  },
+  {
+    "title": "대화 기억을 이어가는 두 방법",
+    "minutes": 5,
+    "layout": "table",
+    "refs": [
+      "C1",
+      "G2"
+    ],
+    "lead": "이 수업은 대화 원문을 다음 입력에 다시 담습니다",
+    "table": [
+      [
+        "방법",
+        "이어지는 내용"
+      ],
+      [
+        "명시적 이력 전달 · 이번 도구",
+        "이전 발신·수신·회신을 다음 패킷에 포함"
+      ],
+      [
+        "CLI 세션 재개 · 심화",
+        "Claude --resume 또는 Gemini --resume"
+      ],
+      [
+        "Gemini가 새로 합류할 때",
+        "알아야 할 Claude 대화를 직접 전달"
+      ]
+    ],
+    "action": "두 번째 패킷과 첫 패킷을 비교한다. 고유 세션 ID와 수업 이력을 구별한다.",
+    "check": "한 세션을 계속 쓴 것처럼 잘못 설명하지 않는다.",
+    "fallback": "packet.md 두 개를 나란히 읽는다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "G2",
+        "title": "Gemini CLI 옵션",
+        "url": "https://geminicli.com/docs/cli/cli-reference/"
+      }
+    ]
+  },
+  {
+    "title": "AI끼리 합의하면 끝일까",
+    "minutes": 5,
+    "layout": "columns",
+    "refs": [
+      "L1"
+    ],
+    "lead": "대화가 바꾼 점과 아직 모르는 점을 남깁니다",
+    "columns": [
+      [
+        "합의",
+        "근거로 수정된 문장\n다음 확인 자료"
+      ],
+      [
+        "불일치",
+        "서로 다른 전제\n판단이 남은 기준"
+      ],
+      [
+        "사람의 선택",
+        "실제 전략 우선순위\n외부 사용·제출"
+      ]
+    ],
+    "action": "Codex가 outcome.md에 합의·불일치·사람 판단을 쓰게 한다.",
+    "check": "두 모델의 동의를 독립 출처라고 하지 않는다.",
+    "fallback": "기존 실제 검토의 미해결 항목을 보여준다.",
+    "sources": [
+      {
+        "id": "L1",
+        "title": "앞선 실제 Codex Claude 검토",
+        "url": "05_사례/기존_실제검토_요약.md"
+      }
+    ]
+  },
+  {
+    "title": "5분 쉬고 이어갑니다",
+    "minutes": 5,
+    "layout": "break",
+    "refs": [],
+    "lead": "다음은 Gemini를 대화에 합류시키기",
+    "body": [
+      "Codex가 계속 진행합니다"
+    ],
+    "action": "강사 계정의 Gemini 사전 준비 상태를 확인한다.",
+    "check": "새로운 로그인 시연으로 시간을 소모하지 않는다.",
+    "fallback": "Gemini 미준비이면 합류 구조와 예시로 진행한다.",
+    "sources": []
+  },
+  {
+    "title": "시연 3 · Gemini 준비 상태 확인",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [
+      "G3",
+      "G4"
+    ],
+    "lead": "같은 전달 경로에 다른 답변자를 추가합니다",
+    "code": "node --version\ngemini --version\ngemini",
+    "body": [
+      "공식 설치: npm install -g @google/gemini-cli",
+      "본인 계정으로 사전 로그인합니다"
+    ],
+    "action": "로그인된 강사 환경에서 버전을 확인한다. 미설치면 미완료로 표시한다.",
+    "check": "이번 PC에서 Gemini 실제 호출 검증 여부를 말한다.",
+    "fallback": "재생 대본을 실제 회신과 구별해 사용한다.",
+    "sources": [
+      {
+        "id": "G3",
+        "title": "Gemini 설치",
+        "url": "https://geminicli.com/docs/get-started/installation/"
+      },
+      {
+        "id": "G4",
+        "title": "Gemini 인증",
+        "url": "https://geminicli.com/docs/get-started/authentication/"
+      }
+    ]
+  },
+  {
+    "title": "Gemini에게 앞선 대화를 건네기",
+    "minutes": 5,
+    "layout": "code",
+    "refs": [
+      "G1",
+      "G2"
+    ],
+    "lead": "Claude 회신까지 Google에 전달됩니다",
+    "code": "python tools/relay.py prepare --to gemini\n  --message messages/03_Gemini_합류.md\npython tools/relay.py send --turn 3 --send",
+    "body": [
+      "Codex가 수신자와 전달 범위를 확인합니다"
+    ],
+    "action": "Gemini 합류 지시문을 입력하고 새 패킷의 이전 대화를 확인한다.",
+    "check": "Gemini가 받지 않은 자료를 읽었다고 하지 않는다.",
+    "fallback": "세 번째 패킷의 구조만 보여준다.",
+    "prompt": "03_Codex에_넣을_Gemini합류.md",
+    "sources": [
+      {
+        "id": "G1",
+        "title": "Gemini 비대화형 호출",
+        "url": "https://geminicli.com/docs/cli/headless/"
+      },
+      {
+        "id": "G2",
+        "title": "Gemini CLI 옵션",
+        "url": "https://geminicli.com/docs/cli/cli-reference/"
+      }
+    ]
+  },
+  {
+    "title": "같은 반론을 반복하지 않게 묻기",
+    "minutes": 5,
+    "layout": "quote",
+    "refs": [],
+    "lead": "“앞선 Codex·Claude 대화를 읽고\n두 AI가 놓친 검증 방법 하나를 제안해줘.”",
+    "body": [
+      "이 문장은 수업용 질문입니다",
+      "이미 답한 쟁점과 새 질문을 구분합니다"
+    ],
+    "action": "메시지 파일의 목적과 범위를 읽는다.",
+    "check": "다른 모델을 부르는 이유를 설명한다.",
+    "fallback": "학생이 새 질문 한 줄을 직접 제안한다.",
+    "sources": []
+  },
+  {
+    "title": "Codex가 두 회신을 비교하고 답하기",
+    "minutes": 5,
+    "layout": "table",
+    "refs": [],
+    "lead": "최종 발언을 만드는 주체는 계속 Codex입니다",
+    "table": [
+      [
+        "비교할 것",
+        "확인 질문"
+      ],
+      [
+        "동일 쟁점",
+        "같은 근거를 반복했는가"
+      ],
+      [
+        "새 관점",
+        "주장이나 검증 방법이 추가됐는가"
+      ],
+      [
+        "충돌",
+        "전제·기간·범위가 다른가"
+      ],
+      [
+        "다음 답변",
+        "무엇을 수정하거나 보류할까"
+      ]
+    ],
+    "action": "실제 Gemini 회신이 있을 때만 읽고 Codex가 답하게 한다.",
+    "check": "미실행 회신을 모델 답변으로 제시하지 않는다.",
+    "fallback": "교육용 재생 문장으로 비교 연습만 한다.",
+    "sources": []
+  },
+  {
+    "title": "대화 기록은 이렇게 남습니다",
+    "minutes": 4,
+    "layout": "columns",
+    "refs": [],
+    "lead": "누가 누구에게 무엇을 보냈는지 추적합니다",
+    "columns": [
+      [
+        "packet.md",
+        "실제 전송할 내용\n직전 이력과 새 질문"
+      ],
+      [
+        "meta.json",
+        "수신자·상태·시간\n입력·회신 해시"
+      ],
+      [
+        "reply.md",
+        "성공한 실제 회신\n그대로 보존"
+      ]
+    ],
+    "action": "한 턴 폴더와 transcript.md를 연다.",
+    "check": "session ID는 서비스 메타데이터이고 학생 신상은 넣지 않는다.",
+    "fallback": "이번에 기록한 실제대화 폴더를 보여준다.",
+    "sources": []
+  },
+  {
+    "title": "언제 대화를 멈출까",
+    "minutes": 4,
+    "layout": "text",
+    "refs": [],
+    "lead": "강의의 기본은 두 왕복입니다",
+    "body": [
+      "수정할 쟁점이 해결되면 정리합니다",
+      "새 근거 없이 반복하면 멈춥니다",
+      "사람의 결정이 필요하면 질문을 남깁니다"
+    ],
+    "action": "현재 대화의 종료 이유를 Codex에게 한 문장으로 쓰게 한다.",
+    "check": "무한히 토론시키는 명령을 주지 않는다.",
+    "fallback": "최대 6회 외부 호출 제한을 설명한다.",
+    "sources": []
+  },
+  {
+    "title": "이 방식이 편리한 이유",
+    "minutes": 5,
+    "layout": "table",
+    "refs": [
+      "L1"
+    ],
+    "lead": "사용자는 한 Codex 대화에서 일을 이어갑니다",
+    "table": [
+      [
+        "반복 작업",
+        "대화 도구가 돕는 일"
+      ],
+      [
+        "앱마다 복사·붙여 넣기",
+        "Codex가 질문과 회신을 전달"
+      ],
+      [
+        "누가 한 말인지 찾기",
+        "발신자·수신자별 기록"
+      ],
+      [
+        "초안 수정 이유 정리",
+        "반론과 Codex 답변 연결"
+      ],
+      [
+        "남은 판단 찾기",
+        "합의·불일치·미확인 정리"
+      ]
+    ],
+    "action": "한 번 받은 답과 두 왕복 뒤 달라진 문장을 비교한다.",
+    "check": "시간 절약률·정확도 개선률을 지어내지 않는다.",
+    "fallback": "실제 기존 검토에서 바뀐 문장과 잘못된 반론을 함께 보여준다.",
+    "sources": [
+      {
+        "id": "L1",
+        "title": "앞선 실제 Codex Claude 검토",
+        "url": "05_사례/기존_실제검토_요약.md"
+      }
+    ]
+  },
+  {
+    "title": "MCP는 연결 방법 중 하나입니다",
+    "minutes": 4,
+    "layout": "columns",
+    "refs": [
+      "O1",
+      "C1",
+      "G1"
+    ],
+    "lead": "이번 대화 시연은 CLI 호출로 진행합니다",
+    "columns": [
+      [
+        "CLI · 이번 수업",
+        "Codex가 명령을 실행\n외부 답변을 받아 읽기"
+      ],
+      [
+        "MCP · 확장 방식",
+        "ask_claude 같은 도구 노출\n어댑터 구현·등록 필요"
+      ]
+    ],
+    "body": [
+      "MCP를 등록하는 것만으로 AI끼리 대화하지 않습니다"
+    ],
+    "action": "CLI 연결과 MCP 어댑터의 차이를 설명한다.",
+    "check": "이번에 구현하지 않은 MCP를 연결했다고 하지 않는다.",
+    "fallback": "연결 안내 파일의 구조를 읽는다.",
+    "sources": [
+      {
+        "id": "O1",
+        "title": "Codex MCP 연결",
+        "url": "https://developers.openai.com/codex/mcp"
+      },
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "G1",
+        "title": "Gemini 비대화형 호출",
+        "url": "https://geminicli.com/docs/cli/headless/"
+      }
+    ]
+  },
+  {
+    "title": "문서 MCP와 AI 대화 연결",
+    "minutes": 4,
+    "layout": "code",
+    "refs": [
+      "O2"
+    ],
+    "lead": "공식 문서 검색 연결의 예입니다",
+    "code": "codex mcp add openaiDeveloperDocs\n  --url https://developers.openai.com/mcp",
+    "body": [
+      "문서 읽기 서버이며 Claude·Gemini 호출 서버는 아닙니다",
+      "주 시연은 계속 Codex와 외부 CLI의 왕복 대화입니다"
+    ],
+    "action": "공식 Docs MCP 문서를 보여준다. 등록 명령은 사전 준비용으로 설명한다.",
+    "check": "문서 연결과 외부 모델 호출을 구분한다.",
+    "fallback": "공식 문서를 직접 연다.",
+    "sources": [
+      {
+        "id": "O2",
+        "title": "OpenAI 문서 MCP",
+        "url": "https://developers.openai.com/learn/docs-mcp"
+      }
+    ]
+  },
+  {
+    "title": "막혔을 때 확인할 것",
+    "minutes": 3,
+    "layout": "table",
+    "refs": [],
+    "lead": "실패를 기록하고 시연 경로를 바꿉니다",
+    "table": [
+      [
+        "상황",
+        "확인·대안"
+      ],
+      [
+        "프로그램을 못 찾음",
+        "설치·PATH, check 결과"
+      ],
+      [
+        "인증·한도 오류",
+        "본인 로그인·사용량, 실제 회신 재생"
+      ],
+      [
+        "응답 없음·시간 초과",
+        "failed 표시, 저장된 사례 사용"
+      ],
+      [
+        "새 근거 없이 반복",
+        "대화 종료, 사람 판단 남기기"
+      ]
+    ],
+    "action": "메타데이터의 실패 상태와 재생 파일의 예시 표시를 보여준다.",
+    "check": "재생을 신규 호출로 말하지 않는다.",
+    "fallback": "연결 과정을 설명하고 저장된 실제 사례를 읽는다.",
+    "sources": []
+  },
+  {
+    "title": "내 과제로 대화 시작하기",
+    "minutes": 3,
+    "layout": "quote",
+    "refs": [],
+    "lead": "“Codex가 진행하고 Claude가 반론해줘.\nGemini에는 다른 검증 방법을 물어봐.”",
+    "body": [
+      "주제·공유 자료·역할·왕복 횟수를 덧붙입니다",
+      "자기 과제의 첫 지시문 한 줄을 남깁니다"
+    ],
+    "action": "04_내과제에_적용.md의 빈칸을 채우게 한다.",
+    "check": "역할뿐 아니라 실제 호출과 전달을 명시한다.",
+    "fallback": "강사와 함께 한 문장만 작성한다.",
+    "prompt": "04_내과제에_적용.md",
+    "sources": []
+  },
+  {
+    "title": "오늘의 완성 기준",
+    "minutes": 3,
+    "layout": "text",
+    "refs": [
+      "C1",
+      "G1"
+    ],
+    "lead": "Codex가 회신을 읽고 다시 답했는가",
+    "body": [
+      "실제 외부 AI 회신과 Codex의 다음 발언이 있습니다",
+      "수신자와 전송한 대화 범위가 기록돼 있습니다",
+      "합의·불일치·사람의 판단을 구분했습니다"
+    ],
+    "action": "실제 기록을 보고 연결·왕복·판단 세 항목을 확인한다.",
+    "check": "한 번 호출만 했다면 왕복 대화 완료라고 하지 않는다.",
+    "fallback": "새 실행과 저장된 사례 중 어디까지 했는지 표시한다.",
+    "sources": [
+      {
+        "id": "C1",
+        "title": "Claude 프로그램 호출",
+        "url": "https://code.claude.com/docs/en/headless"
+      },
+      {
+        "id": "G1",
+        "title": "Gemini 비대화형 호출",
+        "url": "https://geminicli.com/docs/cli/headless/"
+      }
+    ]
+  }
+]

@@ -23,6 +23,7 @@ const uploadedFiles = new Map();
 const selectedAttachments = new Set();
 const followupDrafts = new Map();
 const uploadLimits = { bytes: 10 * 1024 * 1024, count: 5, chars: 60000 };
+const lastModelLists = new Map();
 const mainRolePresets = {
   lead: '요청의 목표를 정리하고 근거와 불확실성을 구분하여 초안을 작성하세요. 상대 AI의 의견을 수용·보류·기각한 이유를 설명하고 최종 결과물을 정리하세요.',
   strategy: '고객·경쟁·자원·실행 조건을 기준으로 전략 대안을 비교하세요. 확인된 사실과 가정을 구분하고, 상대 AI의 검토를 반영해 선택 이유와 실행 조건을 정리하세요.',
@@ -82,6 +83,57 @@ function updateRoundFields() {
   $('#custom-rounds').required = mode === 'custom';
   $('#stop-condition-group').hidden = mode !== 'unlimited';
   $('#stop-condition').disabled = mode !== 'unlimited';
+}
+
+function modelOptions(models, selected = '', previouslyDisabled = false) {
+  const options = [{ id: '', label: 'CLI 기본값' }];
+  for (const model of Array.isArray(models) ? models : []) {
+    if (typeof model?.id !== 'string' || !model.id || model.id.length > 100 || !/^[a-zA-Z0-9._:/-]+$/.test(model.id) || model.id === '__custom__' || options.some(option => option.id === model.id)) continue;
+    options.push({ id: model.id, label: typeof model.label === 'string' && model.label ? model.label : model.id, disabled: model.disabled === true });
+  }
+  if (selected && selected !== '__custom__' && !options.some(option => option.id === selected)) options.push({ id: selected, label: '이전 선택: ' + selected, disabled: previouslyDisabled });
+  options.push({ id: '__custom__', label: '직접 입력' });
+  return options;
+}
+
+function updateModelCustomField(provider) {
+  const custom = $(`#${provider}-model-select`).value === '__custom__';
+  $(`#${provider}-model-custom-group`).hidden = !custom;
+  $(`#${provider}-model`).disabled = !custom;
+  $(`#${provider}-model`).required = custom;
+}
+
+function readSelectedModel(provider) {
+  const select = $(`#${provider}-model-select`);
+  const selected = select.value;
+  if (selected !== '__custom__' && Array.from(select.options || select.children || []).some(option => option.value === selected && option.disabled)) throw new Error(`${providerNames[provider]}의 선택한 모델은 현재 비활성 상태입니다. 다른 모델을 선택하거나 직접 입력해주세요.`);
+  const model = selected === '__custom__' ? $(`#${provider}-model`).value.trim() : selected;
+  if ((selected === '__custom__' && !model) || model.length > 100 || model && !/^[a-zA-Z0-9._:/-]+$/.test(model)) throw new Error(`${providerNames[provider]} 모델 이름의 형식을 확인해주세요.`);
+  return model;
+}
+
+function renderModelOptions(provider, connection) {
+  const select = $(`#${provider}-model-select`);
+  const selected = select.value;
+  const previous = Array.from(select.options || select.children || []).find(option => option.value === selected);
+  const options = modelOptions(connection.models, selected, previous?.disabled === true);
+  const signature = JSON.stringify(options);
+  if (lastModelLists.get(provider) !== signature) {
+    lastModelLists.set(provider, signature);
+    select.replaceChildren();
+    for (const item of options) {
+      const option = node('option', '', item.label);
+      option.value = item.id;
+      option.disabled = item.disabled === true;
+      select.append(option);
+    }
+    select.value = selected;
+  }
+  updateModelCustomField(provider);
+  const hasModels = options.some(option => option.id && option.id !== '__custom__' && !option.label.startsWith('이전 선택: '));
+  const unavailable = options.some(option => option.id === selected && option.disabled);
+  const message = connection.modelListMessage || (hasModels ? '조회된 모델에서 선택하거나 직접 입력할 수 있습니다.' : '조회된 모델이 없습니다. CLI 기본값 또는 직접 입력을 사용할 수 있습니다.');
+  setText($(`#${provider}-model-list-message`), message + (unavailable ? ' 현재 선택한 모델은 비활성 상태입니다. 사용할 모델을 다시 선택해주세요.' : ''));
 }
 
 function clampPanelWidths(widths, totalWidth) {
@@ -313,7 +365,7 @@ function renderRunAttachments(run) {
 }
 
 function renderRunSettings(run) {
-  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition]);
+  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition, run?.models]);
   if (signature === lastRunSettings) return;
   lastRunSettings = signature;
   $('#run-settings').hidden = !run;
@@ -329,6 +381,7 @@ function renderRunSettings(run) {
   ]) {
     const section = node('section', 'run-setting-side');
     section.append(node('h4', '', `${providerNames[provider] || provider} · ${label} 역할`));
+    section.append(node('small', 'run-model-label', '선택 모델: ' + (run.models?.[provider] || 'CLI 기본값 · 모델 ID 지정 안 함')));
     section.append(node('p', '', text || '이전 작업입니다. 별도의 역할 문구가 기록되지 않았습니다.'));
     section.append(node('small', '', `서브 에이전트 ${roles.length}개`));
     for (const role of roles) {
@@ -448,6 +501,7 @@ function updateControls() {
 function renderConnections() {
   for (const provider of ['codex', 'claude']) {
     const connection = currentState.connections?.[provider] || {};
+    renderModelOptions(provider, connection);
     const card = $(`[data-provider="${provider}"]`);
     const badge = $('.connection-badge', card);
     const state = connection.loginRunning ? '로그인 중' : connection.loggedIn ? '연결됨' : connection.installed ? '로그인 필요' : '미설치';
@@ -616,6 +670,7 @@ async function action(callback) {
 
 $('#add-role').addEventListener('click', () => addRole());
 $('#rounds').addEventListener('change', updateRoundFields);
+for (const provider of ['codex', 'claude']) $(`#${provider}-model-select`).addEventListener('change', () => updateModelCustomField(provider));
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
 document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', updateControls));
 $('#fill-sample').addEventListener('click', () => {
@@ -643,10 +698,13 @@ $('#run-form').addEventListener('submit', event => {
   const peerRole = $('#peer-role').value.trim();
   if (!mainRole || !peerRole) { notice('메인 AI와 상대 AI의 역할을 입력해주세요.'); return; }
   let roundSettings;
+  let models;
   try { roundSettings = readRoundSettings($('#rounds').value, $('#custom-rounds').value, $('#stop-condition').value); }
   catch (error) { notice(error.message); return; }
+  try { models = { codex: readSelectedModel('codex'), claude: readSelectedModel('claude') }; }
+  catch (error) { notice(error.message); return; }
   action(async () => {
-    const result = await request('/api/runs', { prompt, main: $('input[name="main"]:checked').value, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models: { codex: $('#codex-model').value.trim(), claude: $('#claude-model').value.trim() }, attachmentIds: attachmentIds() });
+    const result = await request('/api/runs', { prompt, main: $('input[name="main"]:checked').value, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models, attachmentIds: attachmentIds() });
     selectedRunId = result.id;
     initialSelection = false;
   });
@@ -723,5 +781,6 @@ connectRoleEditor('peer', peerRolePresets);
 addRole(agentRolePresets.analysis.name, agentRolePresets.analysis.task, 'main', 'analysis');
 addRole(agentRolePresets.review.name, agentRolePresets.review.task, 'main', 'review');
 updateRoundFields();
+for (const provider of ['codex', 'claude']) updateModelCustomField(provider);
 connectPanelResize();
 poll();

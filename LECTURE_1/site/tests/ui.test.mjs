@@ -93,7 +93,7 @@ function helperContext(extra = {}) {
   const end = source.indexOf("$('#add-role').addEventListener");
   assert.ok(end > 0);
   vm.runInContext(source.slice(0, end), context);
-  const helpers = vm.runInContext('({readRoundSettings, clampPanelWidths, connectPanelResize})', context);
+  const helpers = vm.runInContext('({readRoundSettings, clampPanelWidths, connectPanelResize, modelOptions, readSelectedModel, renderModelOptions})', context);
   return { context, helpers };
 }
 
@@ -158,4 +158,70 @@ test('registered resize handlers restore stored widths, handle pointer and keybo
   assert.equal(properties.get('--setup-width'),'310px');
   assert.equal(properties.get('--activity-width'),'278px');
   assert.ok(!storage.has('codeplant-dialogue-panel-widths-v1'));
+});
+
+test('model options use returned model IDs and preserve a previous choice when the current lookup is empty', () => {
+  const { helpers } = helperContext();
+  const options = helpers.modelOptions([{id:'gpt-6-sol',label:'GPT 6 Sol'},{id:'gpt-6-sol',label:'duplicate'},{id:'bad id',label:'invalid'}], 'gpt-6-sol');
+  assert.equal(options.filter(option=>option.id==='gpt-6-sol').length,1);
+  assert.ok(!options.some(option=>option.id==='bad id'));
+  assert.equal(options[0].id,'');
+  assert.equal(options.at(-1).id,'__custom__');
+  const failed = helpers.modelOptions([], 'gpt-6-sol');
+  assert.equal(failed.find(option=>option.id==='gpt-6-sol').label,'이전 선택: gpt-6-sol');
+});
+
+test('model list refresh keeps the selected ID and custom text, and request values use the selected control', () => {
+  const select = {value:'gpt-6-sol',children:[],replacements:0,replaceChildren(){this.children=[];this.replacements++},append(item){this.children.push(item)}};
+  const input = {value:'my-model',disabled:true,required:false};
+  const custom = {hidden:true};
+  const message = {textContent:''};
+  const elements = {'#codex-model-select':select,'#codex-model':input,'#codex-model-custom-group':custom,'#codex-model-list-message':message};
+  const { helpers } = helperContext({document:{querySelector:selector=>elements[selector],createElement:()=>({textContent:''})}});
+  const connection = {models:[{id:'gpt-6-sol',label:'<strong>literal label</strong>'}]};
+  helpers.renderModelOptions('codex',connection);
+  assert.equal(select.value,'gpt-6-sol');
+  assert.equal(select.children.find(option=>option.value==='gpt-6-sol').textContent,'<strong>literal label</strong>');
+  assert.equal(helpers.readSelectedModel('codex'),'gpt-6-sol');
+  const replacements = select.replacements;
+  helpers.renderModelOptions('codex',connection);
+  assert.equal(select.replacements,replacements);
+  helpers.renderModelOptions('codex',{models:[],modelListMessage:'조회 실패'});
+  assert.equal(select.value,'gpt-6-sol');
+  assert.equal(message.textContent,'조회 실패');
+  select.value='__custom__';
+  helpers.renderModelOptions('codex',connection);
+  assert.equal(select.value,'__custom__');
+  assert.equal(input.value,'my-model');
+  assert.equal(custom.hidden,false);
+  assert.equal(input.disabled,false);
+  assert.equal(helpers.readSelectedModel('codex'),'my-model');
+  input.value='bad model';
+  assert.throws(()=>helpers.readSelectedModel('codex'),/모델 이름/);
+  select.value='';
+  assert.equal(helpers.readSelectedModel('codex'),'');
+});
+
+test('disabled model choices stay unavailable after lookup failure without replacing an explicit custom choice', () => {
+  const select = {value:'unavailable-model',children:[],replaceChildren(){this.children=[]},append(item){this.children.push(item)}};
+  const input = {value:'explicit-custom-model',disabled:true,required:false};
+  const custom = {hidden:true};
+  const elements = {'#codex-model-select':select,'#codex-model':input,'#codex-model-custom-group':custom,'#codex-model-list-message':{textContent:''}};
+  const { helpers } = helperContext({document:{querySelector:selector=>elements[selector],createElement:()=>({textContent:''})}});
+  const connection = {models:[{id:'unavailable-model',label:'Server-provided unavailable label',disabled:true}]};
+  helpers.renderModelOptions('codex',connection);
+  const option = select.children.find(item=>item.value==='unavailable-model');
+  assert.equal(option.disabled,true);
+  assert.equal(option.textContent,'Server-provided unavailable label');
+  assert.throws(()=>helpers.readSelectedModel('codex'),/비활성/);
+  helpers.renderModelOptions('codex',{models:[],modelListMessage:'조회 실패'});
+  assert.equal(select.value,'unavailable-model');
+  assert.equal(select.children.find(item=>item.value==='unavailable-model').disabled,true);
+  assert.throws(()=>helpers.readSelectedModel('codex'),/비활성/);
+  select.value='__custom__';
+  helpers.renderModelOptions('codex',connection);
+  assert.equal(select.value,'__custom__');
+  assert.equal(input.value,'explicit-custom-model');
+  assert.equal(custom.hidden,false);
+  assert.equal(helpers.readSelectedModel('codex'),'explicit-custom-model');
 });

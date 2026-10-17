@@ -43,6 +43,42 @@ export function capture(exe,args,{cwd,timeout=20000}={}){
     child.on('close',code=>{clearTimeout(timer);resolve({code,out,err});});child.stdin.end();
   });
 }
+export function codexModelOptions(data){
+  const seen=new Set();
+  const models=(data||[]).filter(x=>!x.hidden).flatMap(x=>{
+    const id=x.model||x.id;
+    if(typeof id!=='string'||! /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(id)||seen.has(id))return [];
+    seen.add(id);return [{id,label:`${id}${x.isDefault?' · CLI 기본 모델':''}`}];
+  });
+  if(!seen.has('gpt-6-sol'))models.push({id:'gpt-6-sol',label:'gpt-6-sol · 현재 CLI 목록에 없음',disabled:true});
+  return models;
+}
+async function codexModels(exe,cwd){
+  return new Promise((resolve,reject)=>{
+    const child=spawn(exe,['app-server','--stdio'],{cwd,env:loginEnvironment(),windowsHide:true,shell:false});
+    let buffer='',size=0,settled=false;
+    const finish=(error,models)=>{if(settled)return;settled=true;clearTimeout(timer);kill(child);error?reject(error):resolve(models);};
+    const timer=setTimeout(()=>finish(Error('모델 목록 조회 시간 초과')),15000);
+    const send=message=>child.stdin.write(JSON.stringify(message)+'\n');
+    child.stdin.on('error',()=>{});child.stderr.on('data',()=>{});
+    child.on('error',()=>finish(Error('모델 목록 조회 실패')));
+    child.on('close',()=>finish(Error('모델 목록 연결 종료')));
+    child.stdout.setEncoding('utf8');child.stdout.on('data',chunk=>{
+      size+=Buffer.byteLength(chunk);if(size>1000000){finish(Error('모델 목록 크기 초과'));return;}
+      buffer+=chunk;let nl;
+      while((nl=buffer.indexOf('\n'))>=0){
+        const line=buffer.slice(0,nl);buffer=buffer.slice(nl+1);let message;try{message=JSON.parse(line);}catch{continue;}
+        if(message.error){finish(Error('모델 목록 조회 실패'));return;}
+        if(message.id===1){send({method:'initialized'});send({id:2,method:'model/list',params:{limit:100}});}
+        if(message.id===2){
+          if(!Array.isArray(message.result?.data)){finish(Error('모델 목록 응답 오류'));return;}
+          finish(null,codexModelOptions(message.result.data));return;
+        }
+      }
+    });
+    send({id:1,method:'initialize',params:{clientInfo:{name:'attention_model_list',version:'0.4.1'},capabilities:{experimentalApi:true}}});
+  });
+}
 export async function connection(provider,cwd){
   try{
     const exe=executable(provider);
@@ -50,7 +86,15 @@ export async function connection(provider,cwd){
     let loggedIn=false;
     if(provider==='codex')loggedIn=a.code===0&&/Logged in/i.test(a.out+a.err);
     else {try{loggedIn=a.code===0&&JSON.parse(a.out).loggedIn===true;}catch{}}
-    return {installed:true,loggedIn,version:v.out.trim().slice(0,70),message:loggedIn?'기존 로그인 사용':'본인 계정 로그인이 필요합니다.',loginRunning:false};
+    let models=[],modelListMessage='';
+    if(provider==='claude'){
+      models=['opus','sonnet','haiku'].map(id=>({id,label:`${id[0].toUpperCase()+id.slice(1)} · ${id}`}));
+      modelListMessage='Claude 공식 모델 별칭입니다. 실제 사용 가능 여부는 계정·요금제에 따라 달라집니다.';
+    }else if(loggedIn){
+      try{models=await codexModels(exe,cwd);modelListMessage='현재 CLI가 반환한 모델 목록입니다. 목록에 없는 모델은 직접 입력으로 시도할 수 있습니다.';}
+      catch{modelListMessage='모델 목록을 가져오지 못했습니다. CLI 기본값 또는 직접 입력을 사용하세요.';}
+    }
+    return {installed:true,loggedIn,version:v.out.trim().slice(0,70),message:loggedIn?'기존 로그인 사용':'본인 계정 로그인이 필요합니다.',loginRunning:false,models,modelListMessage};
   }catch{return {installed:false,loggedIn:false,version:'',message:'설치 또는 실행 경로를 확인하세요.',loginRunning:false};}
 }
 

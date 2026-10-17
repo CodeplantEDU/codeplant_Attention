@@ -199,7 +199,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
       const url=new URL(req.url,`http://${host}`);
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.4.0'});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.4.1'});
       if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];

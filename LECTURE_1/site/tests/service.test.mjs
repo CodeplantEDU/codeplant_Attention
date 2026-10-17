@@ -6,10 +6,19 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createService,validateRun,dialogueRequested,requestedRounds} from '../server.mjs';
 import {requestedFormats,parseFilePackage} from '../lib/files.mjs';
-import {argumentsFor,parseEvent,parseOwnedActivity} from '../lib/providers.mjs';
+import {argumentsFor,parseEvent,parseOwnedActivity,codexModelOptions} from '../lib/providers.mjs';
 import {control} from '../tools/control.mjs';
 
 const ready=async()=>({installed:true,loggedIn:true,version:'test',message:'test'});
+test('model list excludes hidden/invalid entries and passes selected IDs to both CLIs',()=>{
+  const models=codexModelOptions([{model:'gpt-5.6-sol',isDefault:true},{model:'gpt-5.6-sol'},{model:'internal',hidden:true},{model:'--bad'},{model:'gpt-6-sol'}]);
+  assert.deepEqual(models.map(x=>x.id),['gpt-5.6-sol','gpt-6-sol']);
+  assert.equal(models[1].disabled,undefined);
+  assert.equal(codexModelOptions([])[0].disabled,true);
+  for(const [provider,model] of [['codex','gpt-5.6-sol'],['claude','sonnet']]){
+    const args=argumentsFor(provider,{model});assert.equal(args[args.indexOf('--model')+1],model);
+  }
+});
 async function setup(t,cli,check=ready){
   const testRoot=fileURLToPath(new URL('../../tmp/dialogue-tests/',import.meta.url));
   await mkdir(testRoot,{recursive:true});
@@ -200,4 +209,19 @@ test('main-only followup works when the peer is logged out, while requested dial
   peerOffline=true;await s.app.refresh();
   assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'설명해줘'})).status,202);await wait(s.get,'completed');
   assert.deepEqual(calls.slice(3),['codex']);assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'왕복해'})).status,409);
+});
+test('long followup history is summarized by the main AI while original messages remain',async t=>{
+  const calls=[];
+  const s=await setup(t,async(p,opts)=>{
+    calls.push({p,prompt:opts.prompt,roles:opts.roles});
+    return {text:opts.prompt.includes('맥락을 정리하는 단계')?'보존할 조건과 출처 요약':calls.length<=3?'원문'+String(calls.length)+'가'.repeat(24000):'후속 답변',agentCount:0};
+  });
+  const {id}=await(await s.post('/api/runs',{main:'codex',prompt:'public',rounds:1})).json();await wait(s.get,'completed');
+  const before=calls.length;
+  await s.post(`/api/runs/${id}/messages`,{message:'근거를 설명해줘'});const run=await wait(s.get,'completed');
+  assert.ok(calls.slice(before).some(x=>x.prompt.includes('맥락을 정리하는 단계')));
+  assert.ok(calls.slice(before).every(x=>x.p==='codex'&&x.roles.length===0));
+  assert.match(calls.at(-1).prompt,/보존할 조건과 출처 요약/);
+  assert.ok(run.messages.some(m=>m.text.startsWith('원문1')&&m.text.length>24000));
+  assert.equal(run.final,'후속 답변');
 });

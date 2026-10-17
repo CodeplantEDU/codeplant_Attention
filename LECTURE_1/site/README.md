@@ -24,6 +24,8 @@
 
 ## 처음 한 번 설치·로그인
 
+Codex에 설치를 맡기려면 **[저장소 README의 처음 설치 안내](../../README.md#codex-install)**를 먼저 사용한다. 아래 명령은 수동 확인용이며, AI CLI는 사용할 것 하나만 설치·로그인하면 된다.
+
 Node는 [공식 다운로드](https://nodejs.org/en/download), Python은 [공식 다운로드](https://www.python.org/downloads/windows/), Codex는 [공식 CLI 안내](https://developers.openai.com/codex/cli/), Claude는 [공식 설치 안내](https://code.claude.com/docs/en/setup)를 사용한다. Codex의 공식 npm 패키지는 `@openai/codex`다. Claude는 공식 설치 프로그램 또는 `winget install Anthropic.ClaudeCode`를 사용할 수 있다. 설치 후 터미널을 다시 연다.
 
 이 site 폴더에서:

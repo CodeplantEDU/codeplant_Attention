@@ -67,7 +67,19 @@ function Get-InstallerFinalPath([string]$file) {
     return $buffer.ToString()
   } finally { $stream.Dispose() }
 }
-$qaShortcutShell = New-Object -ComObject WScript.Shell
+function Get-InstallerShortcutTarget([string]$file) {
+  # WScript.Shell returns an ANSI path on an English runner; read Unicode LinkInfo instead (MS-SHLLINK 2.3).
+  $bytes = [IO.File]::ReadAllBytes($file)
+  if ($bytes.Length -lt 0x4e -or [BitConverter]::ToUInt32($bytes,0) -ne 0x4c) { throw 'Invalid shortcut header' }
+  $flags = [BitConverter]::ToUInt32($bytes,20)
+  if (-not ($flags -band 2)) { throw 'Shortcut LinkInfo missing' }
+  $offset = 0x4c
+  if ($flags -band 1) { $offset += 2 + [BitConverter]::ToUInt16($bytes,0x4c) }
+  if ($offset+36 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes,$offset+4) -lt 36) { throw 'Unicode shortcut LinkInfo missing' }
+  $start = $offset + [BitConverter]::ToUInt32($bytes,$offset+28)
+  if ($start -lt $offset+36 -or $start -ge $bytes.Length) { throw 'Invalid Unicode shortcut path offset' }
+  return [Text.Encoding]::Unicode.GetString($bytes,$start,$bytes.Length-$start).Split([char]0)[0]
+}
 $qaFoundShortcuts = @()
 foreach ($qaCandidates in @(
   @((Join-Path $qaDesktop 'CODEPLANT ATTENTION.lnk'),(Join-Path $env:USERPROFILE 'Desktop\CODEPLANT ATTENTION.lnk')),
@@ -77,7 +89,7 @@ foreach ($qaCandidates in @(
   if (-not $qaShortcut) { throw ('Shortcut missing from profile: '+($qaCandidates -join ', ')) }
   $qaAsciiLink = Join-Path $qaEvidence ('shortcut-'+$qaFoundShortcuts.Count+'.lnk')
   Copy-Item -LiteralPath $qaShortcut -Destination $qaAsciiLink -Force
-  $qaTarget = $qaShortcutShell.CreateShortcut([string]$qaAsciiLink).TargetPath
+  $qaTarget = Get-InstallerShortcutTarget $qaAsciiLink
   @{shortcut=$qaShortcut;target=$qaTarget;expected=$qaExe} | ConvertTo-Json | Add-Content (Join-Path $qaEvidence 'shortcut-paths.jsonl') -Encoding utf8
   if ((Get-InstallerFinalPath $qaTarget) -ne (Get-InstallerFinalPath $qaExe)) { throw 'Shortcut target mismatch' }
   $qaFoundShortcuts += $qaShortcut

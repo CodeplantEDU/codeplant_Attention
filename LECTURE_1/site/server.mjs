@@ -2,7 +2,7 @@ import http from 'node:http';
 import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {randomUUID,randomBytes,timingSafeEqual} from 'node:crypto';
+import {randomUUID,randomBytes,timingSafeEqual,createHash} from 'node:crypto';
 import {connection,runCLI,beginLogin,logoutCLI} from './lib/providers.mjs';
 import {openUploads} from './lib/uploads.mjs';
 import {requestedFormats,fileInstructions,parseFilePackage,createFiles,readGenerated} from './lib/files.mjs';
@@ -222,7 +222,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.5.0'});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.0',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
       if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];

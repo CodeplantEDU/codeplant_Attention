@@ -1,4 +1,5 @@
 **/data/
+**/.local-data/
 **/uploads/
 **/sessions/
 **/node_modules/

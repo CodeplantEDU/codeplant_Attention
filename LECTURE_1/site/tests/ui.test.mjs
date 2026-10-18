@@ -4,6 +4,16 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+test('local redesign retains every fixed event target and associates the central composer with its settings form',async()=>{
+  const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
+  const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(match=>match[1]);
+  assert.equal(ids.length,new Set(ids).size,'IDs must remain unique');
+  for(const match of source.matchAll(/\$\('#([\w-]+)'\)/g))assert.ok(ids.includes(match[1]),'Missing live control: '+match[1]);
+  assert.match(html,/<textarea[^>]+id="prompt"[^>]+form="run-form"/);
+  assert.match(html,/<button[^>]+id="start-run"[^>]+form="run-form"/);
+  assert.ok(!html.includes('fill-sample'));
+  assert.ok(!source.includes('addRole(agentRolePresets.analysis'));
+});
 const start = source.indexOf("const dropzone = $('#upload-dropzone');");
 const end = source.indexOf("$('#followup-message').addEventListener", start);
 assert.ok(start > 0 && end > start, 'The actual registered drag/drop event block must be present.');

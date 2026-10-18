@@ -2,7 +2,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-const base='http://127.0.0.1:49321';
+const base=`http://127.0.0.1:${process.env.DIALOGUE_PORT||49322}`;
 export async function control(args){
   const [command,a,b]=args;
   const stateResponse=await fetch(base+'/api/state');if(!stateResponse.ok)throw Error('로컬 서비스를 먼저 실행하세요.');

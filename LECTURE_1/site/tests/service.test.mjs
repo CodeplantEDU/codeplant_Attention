@@ -10,6 +10,16 @@ import {argumentsFor,parseEvent,parseOwnedActivity,codexModelOptions,runCLI,gemi
 import {control} from '../tools/control.mjs';
 
 const ready=async()=>({installed:true,loggedIn:true,version:'test',message:'test'});
+test('fresh personal workspaces start empty and identify their own server without exposing filesystem paths',async t=>{
+  const a=await setup(t,async()=>{throw Error('No model call expected');});
+  const b=await setup(t,async()=>{throw Error('No model call expected');});
+  const health=await fetch(a.url+'/api/health').then(r=>r.json());
+  const other=await fetch(b.url+'/api/health').then(r=>r.json());
+  assert.match(health.workspace,/^[a-f0-9]{16}$/);
+  assert.notEqual(health.workspace,other.workspace);
+  assert.ok(!JSON.stringify(health).includes(a.dataDir));
+  const state=await a.get();assert.deepEqual(state.runs,[]);assert.deepEqual(state.uploads,[]);
+});
 test('model list excludes hidden/invalid entries and passes selected IDs to both CLIs',()=>{
   const models=codexModelOptions([{model:'gpt-5.6-sol',isDefault:true},{model:'gpt-5.6-sol'},{model:'internal',hidden:true},{model:'--bad'},{model:'gpt-6-sol'}]);
   assert.deepEqual(models.map(x=>x.id),['gpt-5.6-sol','gpt-6-sol']);
@@ -123,7 +133,7 @@ test('Codex control routes requests and never prints local token or login URL',a
   const dir=await mkdtemp(path.join(testRoot,'control-'));
   const requestFile=path.join(dir,'request.json');await writeFile(requestFile,JSON.stringify({prompt:'public task',main:'claude',peer:'codex',rounds:1}));
   assert.equal((await control(['run',requestFile])).id,'created');
-  assert.equal(calls.at(-1).url,'http://127.0.0.1:49321/api/runs');
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:49322/api/runs');
   assert.equal(JSON.parse(calls.at(-1).options.body).main,'claude');
   await assert.rejects(()=>control(['unknown']),/사용법/);
 });

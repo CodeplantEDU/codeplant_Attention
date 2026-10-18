@@ -346,7 +346,7 @@ function updateAttachmentSummary() {
   const count = files.length;
   const chars = files.reduce((total, file) => total + Number(file.chars || 0), 0);
   setText($('#attachment-summary'), count ? `${count}개 선택 · 추출 텍스트 ${chars.toLocaleString('ko-KR')}자` : '선택한 자료가 없습니다.');
-  setText($('#followup-attachments'), count ? `기존 자료를 유지하고, 왼쪽에서 선택한 자료 ${count}개를 추가합니다.` : '기존 자료와 대화 내용을 유지합니다. 추가 자료는 왼쪽에서 선택하세요.');
+  setText($('#followup-attachments'), count ? `기존 자료를 유지하고, 내 자료에서 선택한 자료 ${count}개를 추가합니다.` : '기존 자료와 대화 내용을 유지합니다. 추가 자료는 내 자료에서 선택하세요.');
 }
 
 function renderRunAttachments(run) {
@@ -654,7 +654,7 @@ function render() {
   renderAgents(run);
   renderHistory();
   renderComposer(run);
-  setText($('#conversation-title'), run?.title || 'AI가 함께 생각하는 공간');
+  setText($('#conversation-title'), run?.title || '새 대화');
   const badge = $('#run-status');
   setText(badge, run ? statusLabel(run.status) : '준비');
   badge.className = `badge ${run ? statusClass(run.status) : 'neutral'}`;
@@ -702,10 +702,6 @@ $('#peer-select').addEventListener('change', updateControls);
 for (const provider of providers) $(`#${provider}-model-select`).addEventListener('change', () => { updateModelCustomField(provider); updateControls(); });
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
 document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', () => { mainChosen = true; if ($('#peer-select').value === input.value) $('#peer-select').value = ''; updateControls(); }));
-$('#fill-sample').addEventListener('click', () => {
-  $('#prompt').value = 'Attention 참여자를 위한 2시간 AI 특강안을 작성해줘. 핵심은 한 AI를 메인으로 두고 다른 AI와 대화하며 결과물을 개선하는 방법이야.\n\n서브 에이전트는 교육 흐름과 시연 실패 가능성을 나누어 검토해줘. 상대 AI는 초안의 약점을 지적하고, 메인 AI는 수용·보류 이유를 설명한 뒤 최종 시간표와 사전 준비 목록을 정리해줘. 확인되지 않은 기능이나 효과는 사실로 단정하지 마.';
-  $('#prompt').focus();
-});
 $('#new-task').addEventListener('click', () => {
   selectedRunId = null;
   initialSelection = false;
@@ -774,7 +770,7 @@ for (const type of ['dragenter', 'dragover', 'drop']) window.addEventListener(ty
   event.preventDefault();
   if (type === 'drop') {
     clearDropzone();
-    notice('파일은 왼쪽 참고 자료 영역에 놓아주세요.');
+    notice('파일은 내 자료의 참고 자료 영역에 놓아주세요.');
   }
 });
 window.addEventListener('dragend', clearDropzone);
@@ -865,8 +861,6 @@ document.addEventListener('click', async event => {
 
 connectRoleEditor('main', mainRolePresets);
 connectRoleEditor('peer', peerRolePresets);
-addRole(agentRolePresets.analysis.name, agentRolePresets.analysis.task, 'main', 'analysis');
-addRole(agentRolePresets.review.name, agentRolePresets.review.task, 'main', 'review');
 updateRoundFields();
 for (const provider of providers) updateModelCustomField(provider);
 connectPanelResize();

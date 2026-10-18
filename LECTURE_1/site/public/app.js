@@ -815,7 +815,9 @@ document.querySelectorAll('[data-logout]').forEach(button => button.addEventList
   notice(`${providerNames[button.dataset.logout]}에서 로그아웃했습니다. 로그인 버튼으로 계정을 다시 연결할 수 있습니다.`, true);
 })));
 
-$('#bridge-panel').open = cloudMode;
+// Hosted deployment has been removed; the installed app uses its own local service.
+$('#bridge-panel').hidden = true;
+$('#bridge-panel').open = false;
 $('#bridge-local').hidden = cloudMode;
 $('#bridge-cloud').hidden = !cloudMode;
 if (cloudMode) {

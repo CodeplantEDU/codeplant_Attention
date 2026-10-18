@@ -5,7 +5,11 @@ on:
       tag:
         description: 'Release tag'
         required: true
-        default: desktop-v0.6.2
+        default: desktop-v0.7.0
+      windows_only:
+        description: 'Build the Windows installer first'
+        type: boolean
+        default: true
       runtime_run:
         description: 'Optional successful runtime build run ID (same runtime source only)'
         required: false
@@ -61,13 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            platform: win32
-            script: pack:win
-          - os: macos-15
-            platform: darwin
-            script: pack:mac
+        include: ${{ fromJSON(inputs.windows_only && '[{"os":"windows-latest","platform":"win32","script":"pack:win"}]' || '[{"os":"windows-latest","platform":"win32","script":"pack:win"},{"os":"macos-15","platform":"darwin","script":"pack:mac"}]') }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -102,7 +100,14 @@ jobs:
       - run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install and verify Windows on a clean profile
+        if: matrix.platform == 'win32'
+        shell: pwsh
+        run: ./scripts/check-installer.ps1
+        env:
+          ATTENTION_SMOKE_DIR: ${{ github.workspace }}/smoke-output
       - name: Packaged smoke check
+        if: matrix.platform != 'win32'
         shell: bash
         env:
           ATTENTION_SMOKE_DIR: ${{ github.workspace }}/smoke-output
@@ -137,11 +142,11 @@ jobs:
         with:
           name: app-${{ matrix.platform }}
           path: |
-            LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Windows.exe
+            LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Setup.exe
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Mac.dmg
   mac-intel:
     needs: package
-    if: ${{ always() && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
+    if: ${{ always() && !inputs.windows_only && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/setup-node@v4
@@ -179,7 +184,7 @@ jobs:
           path: smoke-output-intel/smoke
   release:
     needs: [package, mac-intel]
-    if: ${{ always() && needs.mac-intel.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
+    if: ${{ always() && (inputs.windows_only || needs.mac-intel.result == 'success') && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -196,5 +201,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           cd release-files
-          sha256sum *.exe *.dmg > SHA256SUMS.txt
-          gh release create "$TAG" *.exe *.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "ATTENTION Desktop ${TAG#desktop-v}" --notes-file ../LECTURE_1/desktop/RELEASE.md
+          shopt -s nullglob
+          files=(*.exe *.dmg)
+          sha256sum "${files[@]}" > SHA256SUMS.txt
+          gh release create "$TAG" "${files[@]}" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "ATTENTION Desktop ${TAG#desktop-v}" --notes-file ../LECTURE_1/desktop/RELEASE.md

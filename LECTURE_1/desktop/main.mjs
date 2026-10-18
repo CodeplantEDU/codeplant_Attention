@@ -6,6 +6,7 @@ import {mkdirSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {runtimePaths,installedProviders,installProvider,backendEnvironment} from './runtime.mjs';
 import {connectionSummary,authRequest,loginUrl,canContinue} from './auth.mjs';
+import {isSetupRequest} from './ipc.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const resources=app.isPackaged?process.resourcesPath:here;
@@ -28,7 +29,7 @@ async function showSetup(){
   setup.on('close',event=>{if(installing){event.preventDefault();setup.webContents.send('attention:progress','공식 도구를 준비하고 있습니다. 완료한 뒤 창을 닫아 주세요.');}});
   setup.on('closed',()=>{setup=null;});await setup.loadFile(path.join(here,'setup.html'));
 }
-function trusted(event){if(!setup||event.sender!==setup.webContents||event.senderFrame.url!==new URL('setup.html',import.meta.url).href)throw Error('허용되지 않은 요청입니다.');}
+function trusted(event){if(!isSetupRequest(event,setup?.webContents,path.join(here,'setup.html')))throw Error('허용되지 않은 요청입니다.');}
 async function state(){
   if(installing)throw Error('공식 도구를 준비하고 있습니다. 잠시 기다려 주세요.');
   await startBackend();
@@ -104,7 +105,7 @@ else{
   app.whenReady().then(async()=>{
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       ...(process.platform==='darwin'?[{role:'appMenu'}]:[]),
-      {label:'앱',submenu:[{label:'AI 로그인·연결',click:showSetup},{label:'공개 사이트 열기',click:()=>external('https://codeplant-attention.vercel.app/')},{label:'자료 저장 폴더',click:()=>shell.openPath(app.getPath('userData'))},{type:'separator'},{role:'quit',label:'종료'}]},
+      {label:'앱',submenu:[{label:'AI 로그인·연결',click:showSetup},{label:'자료 저장 폴더',click:()=>shell.openPath(app.getPath('userData'))},{type:'separator'},{role:'quit',label:'종료'}]},
       {role:'editMenu',label:'편집'},{role:'viewMenu',label:'보기'}]));
     // Every launch shows account connections, including when tools or a legacy server already exist.
     await showSetup();

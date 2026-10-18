@@ -1,22 +1,22 @@
 # ATTENTION 데스크톱 앱
 
-[Windows 실행 파일](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Windows.exe) · [Mac 앱](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Mac.dmg)
+[Windows 실행 파일](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Setup.exe) · [Mac 앱](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.2/CODEPLANT-ATTENTION-Mac.dmg)
 
 [실제 패키지 검수 결과와 SHA256](검수결과.md)
 
-Windows x64용 포터블 EXE와 Mac Apple Silicon·Intel용 Universal DMG를 배포합니다. Mac 앱은 macOS 13 이상을 기준으로 합니다. Windows는 Windows 10 22H2 이상을 기준으로 합니다.
+Windows x64용 설치 마법사 EXE와 Mac Apple Silicon·Intel용 Universal DMG를 배포합니다. Mac 앱은 macOS 13 이상을 기준으로 합니다. Windows는 Windows 10 22H2 이상을 기준으로 합니다.
 
-> 0.6.2는 시작 로그인 창을 표시하고 참고자료의 크기·개수·추출 글자 수 제한을 해제합니다. 이전 앱이 켜져 있으면 종료한 뒤 새 파일을 실행하세요. 기존 계정과 data는 그대로 사용합니다.
+> 0.7.0 Windows 설치형은 시작 요청의 경로 인코딩·대소문자 비교 오류를 수정했습니다. 참고자료 제한 해제도 유지합니다. 이전 앱이 켜져 있으면 종료한 뒤 새 파일을 실행하세요. 기존 계정과 data는 그대로 사용합니다.
 
 ## 사용하기
 
-1. Windows는 EXE를 실행합니다. Mac은 DMG를 열어 앱을 Applications로 옮긴 뒤 실행합니다.
+1. Windows는 **CODEPLANT-ATTENTION-Setup.exe**를 실행해 설치 위치를 선택하고 설치를 마칩니다. 다음부터 바탕화면·시작 메뉴의 **CODEPLANT ATTENTION**을 엽니다. Mac은 DMG를 열어 앱을 Applications로 옮긴 뒤 실행합니다.
 2. 실행하면 **AI 로그인** 창이 먼저 열립니다. 사용할 AI의 **로그인**을 누릅니다. 도구가 없으면 **준비 후 로그인**을 누르면 됩니다. 앱이 공식 CLI를 전용 폴더에 다운로드하므로 Node·Python을 따로 설치할 필요는 없습니다.
 3. 브라우저의 공식 인증 화면에서 본인 계정으로 로그인합니다. 창이 안 열리면 앱의 **로그인 화면 열기**를 누릅니다. 하나만 연결해도 **대화 시작**이 활성화됩니다. 이미 로그인된 계정은 다시 로그인하지 않아도 됩니다.
 4. 메인·상대·모델·역할을 선택합니다. 자료 드래그앤드롭과 **Word로 만들어줘** 등의 대화형 파일 요청은 기존 사이트와 같습니다.
 5. AI를 추가하려면 앱 메뉴의 **AI 로그인·연결**를 엽니다. 진행 중인 작업이나 인증이 있으면 먼저 마칩니다.
 
-앱 안에서 바로 대화할 수 있습니다. Vercel 화면을 쓰려면 로컬 화면의 **웹 연결 코드 발급** → 공개 사이트에서 **내 PC 연결** 순서로 연결합니다. 앱은 켜 두어야 합니다.
+Vercel 공개 배포는 제거했습니다. 설치된 앱 안에서 AI 로그인·대화·파일 작업을 진행합니다. Windows의 설치된 앱 목록에서 제거할 수 있으며 사용자 자료 경로는 삭제하지 않습니다.
 
 ## 계정과 자료
 

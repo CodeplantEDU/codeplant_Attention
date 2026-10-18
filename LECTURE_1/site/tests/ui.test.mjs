@@ -96,6 +96,15 @@ function helperContext(extra = {}) {
   const helpers = vm.runInContext('({readRoundSettings, clampPanelWidths, connectPanelResize, modelOptions, readSelectedModel, renderModelOptions, updateControls})', context);
   return { context, helpers };
 }
+
+test('hosted API requests target loopback and authenticate both reads and writes with the paired session',async()=>{
+  const calls=[];
+  const {context}=helperContext({location:{hostname:'codeplant-attention.vercel.app'},sessionStorage:{getItem:()=> 'browser-pair-token'},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({ok:true})};}});
+  const request=vm.runInContext('request',context);
+  await request('/api/state');await request('/api/login',{provider:'codex'});
+  for(const call of calls){assert.ok(call.url.startsWith('http://127.0.0.1:49321/api/'));assert.equal(call.options.targetAddressSpace,'loopback');assert.equal(call.options.headers['X-Local-Token'],'browser-pair-token');}
+  assert.equal(calls[1].options.method,'POST');
+});
 test('one connected main enables starting; only the selected peer is required for dialogue',()=>{
   for(const main of ['codex','claude','gemini']){
     const elements=new Map();

@@ -229,7 +229,7 @@ async function request(path, body) {
     body: JSON.stringify(body)
   };
   if (cloudMode) options.headers = { ...options.headers, 'X-Local-Token': bridgeToken };
-  const response = await fetch(apiBase + path, { ...options, targetAddressSpace: 'local' });
+  const response = await fetch(apiBase + path, { ...options, targetAddressSpace: 'loopback' });
   if (cloudMode && response.status === 403) {
     sessionStorage.removeItem('attention-bridge-token');location.reload();
     throw new Error('PC 연결이 만료됐습니다. 다시 연결하세요.');
@@ -854,7 +854,7 @@ $('#bridge-connect').addEventListener('click', async () => {
   const button = $('#bridge-connect');button.disabled = true;
   setText($('#bridge-status'), '이 PC의 연결 프로그램에 접속합니다…');
   try {
-    const response = await fetch(apiBase + '/api/bridge/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#bridge-code').value.trim() }), targetAddressSpace: 'local', signal: AbortSignal.timeout(15000) });
+    const response = await fetch(apiBase + '/api/bridge/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#bridge-code').value.trim() }), targetAddressSpace: 'loopback', signal: AbortSignal.timeout(15000) });
     const data = await response.json();if (!response.ok) throw new Error(data.error || '연결 코드를 확인하세요.');
     sessionStorage.setItem('attention-bridge-token', data.token);bridgeToken = data.token;$('#bridge-code').value = '';
     $('#bridge-disconnect').hidden = false;setText($('#bridge-status'), '내 PC에 연결했습니다. 오른쪽에서 본인의 AI 계정을 로그인하세요.');
@@ -869,7 +869,7 @@ document.addEventListener('click', async event => {
   event.preventDefault();
   try {
     if (!bridgeToken) throw new Error('내 PC를 먼저 연결하세요.');
-    const response = await fetch(apiBase + link.getAttribute('href'), { headers: { 'X-Local-Token': bridgeToken }, targetAddressSpace: 'local' });
+    const response = await fetch(apiBase + link.getAttribute('href'), { headers: { 'X-Local-Token': bridgeToken }, targetAddressSpace: 'loopback' });
     if (!response.ok) throw new Error('다운로드 연결이 만료됐습니다. PC를 다시 연결하세요.');
     const url = URL.createObjectURL(await response.blob());const download = node('a');download.href = url;download.download = link.download || 'AI_대화기록.md';download.click();setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) { notice(error.message); }

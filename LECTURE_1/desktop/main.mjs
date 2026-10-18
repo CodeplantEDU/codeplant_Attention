@@ -1,7 +1,7 @@
 import {app,BrowserWindow,Menu,ipcMain,shell,dialog} from 'electron';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {mkdir} from 'node:fs/promises';
+import {mkdir,writeFile} from 'node:fs/promises';
 import {mkdirSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {runtimePaths,installedProviders,installProvider,backendEnvironment} from './runtime.mjs';
@@ -84,7 +84,11 @@ else{
       {role:'editMenu',label:'편집'},{role:'viewMenu',label:'보기'}]));
     if(smoke){await showSetup();await openStudio();}
     else if(installedProviders(app.getPath('userData')).length||await existing())await openStudio();else await showSetup();
-  }).catch(e=>{dialog.showErrorBox('CODEPLANT ATTENTION',e.message);app.exit(1);});
+  }).catch(async e=>{
+    if(smoke){const folder=path.join(userData,'smoke');await mkdir(folder,{recursive:true});await writeFile(path.join(folder,'error.json'),JSON.stringify({error:e.message}));}
+    else dialog.showErrorBox('CODEPLANT ATTENTION',e.message);
+    app.exit(1);
+  });
   app.on('window-all-closed',()=>{if(!installing)app.quit();});
   app.on('before-quit',event=>{
     quitting=true;if(!worker)return;event.preventDefault();const child=worker;worker=null;

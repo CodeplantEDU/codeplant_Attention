@@ -106,21 +106,14 @@ jobs:
           app_pid=$!
           for i in $(seq 1 90); do
             [ -f "$ATTENTION_SMOKE_DIR/smoke/result.json" ] && break
+            [ -f "$ATTENTION_SMOKE_DIR/smoke/error.json" ] && break
             sleep 2
           done
+          if [ -f "$ATTENTION_SMOKE_DIR/smoke/error.json" ]; then cat "$ATTENTION_SMOKE_DIR/smoke/error.json"; exit 1; fi
           node -e "const r=require(process.env.ATTENTION_SMOKE_DIR+'/smoke/result.json');if(!r.ok)process.exit(1);console.log(r)"
           wait "$app_pid"
           if [ "${{ matrix.platform }}" = darwin ]; then
             lipo -archs "$exe" | grep 'x86_64.*arm64\|arm64.*x86_64'
-            export ATTENTION_SMOKE_DIR="$ATTENTION_SMOKE_DIR/intel"
-            arch -x86_64 "$exe" --smoke-test &
-            app_pid=$!
-            for i in $(seq 1 90); do
-              [ -f "$ATTENTION_SMOKE_DIR/smoke/result.json" ] && break
-              sleep 2
-            done
-            node -e "const r=require(process.env.ATTENTION_SMOKE_DIR+'/smoke/result.json');if(!r.ok||r.arch!=='x64')process.exit(1);console.log(r)"
-            wait "$app_pid"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
@@ -130,13 +123,49 @@ jobs:
             smoke-output/smoke
             smoke-output/intel/smoke
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-${{ matrix.platform }}
           path: |
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Windows.exe
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Mac.dmg
-  release:
+  mac-intel:
     needs: package
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-darwin
+          path: app-files
+      - name: Run the universal app on an Intel Mac
+        shell: bash
+        env:
+          ATTENTION_SMOKE_DIR: ${{ github.workspace }}/smoke-output-intel
+        run: |
+          mkdir -p "$RUNNER_TEMP/attention-dmg"
+          hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/attention-dmg" app-files/CODEPLANT-ATTENTION-Mac.dmg
+          ditto "$RUNNER_TEMP/attention-dmg/CODEPLANT ATTENTION.app" "$RUNNER_TEMP/CODEPLANT ATTENTION.app"
+          hdiutil detach "$RUNNER_TEMP/attention-dmg"
+          "$RUNNER_TEMP/CODEPLANT ATTENTION.app/Contents/MacOS/CODEPLANT ATTENTION" --smoke-test &
+          app_pid=$!
+          for i in $(seq 1 90); do
+            [ -f "$ATTENTION_SMOKE_DIR/smoke/result.json" ] && break
+            [ -f "$ATTENTION_SMOKE_DIR/smoke/error.json" ] && break
+            sleep 2
+          done
+          if [ -f "$ATTENTION_SMOKE_DIR/smoke/error.json" ]; then cat "$ATTENTION_SMOKE_DIR/smoke/error.json"; exit 1; fi
+          node -e "const r=require(process.env.ATTENTION_SMOKE_DIR+'/smoke/result.json');if(!r.ok||r.arch!=='x64')process.exit(1);console.log(r)"
+          wait "$app_pid"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-darwin-intel
+          path: smoke-output-intel/smoke
+  release:
+    needs: [package, mac-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

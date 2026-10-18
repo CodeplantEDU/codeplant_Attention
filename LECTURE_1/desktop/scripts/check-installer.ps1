@@ -12,7 +12,7 @@ $qaNode = (Get-Command node.exe).Source
 $env:USERPROFILE = Join-Path $qaRoot '새 사용자'
 $env:APPDATA = Join-Path $env:USERPROFILE 'AppData\Roaming'
 $env:LOCALAPPDATA = Join-Path $env:USERPROFILE 'AppData\Local'
-New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA -Force | Out-Null
+New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA,(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') -Force | Out-Null
 
 $qaWizard = Start-Process -FilePath $qaInstaller -PassThru
 for ($qaTry=0; $qaTry -lt 50; $qaTry++) {
@@ -36,8 +36,16 @@ $qaSetup = Start-Process -FilePath $qaInstaller -ArgumentList @('/S','/currentus
 if ($qaSetup.ExitCode -ne 0) { throw "Installer exit: $($qaSetup.ExitCode)" }
 $qaExe = Join-Path $qaInstall 'CODEPLANT ATTENTION.exe'
 if (-not (Test-Path -LiteralPath $qaExe)) { throw 'Installed executable missing' }
-foreach ($qaShortcut in @((Join-Path $qaDesktop 'CODEPLANT ATTENTION.lnk'),(Join-Path $qaPrograms 'CODEPLANT ATTENTION.lnk'))) {
-  if (-not (Test-Path -LiteralPath $qaShortcut)) { throw "Shortcut missing: $qaShortcut" }
+$qaShortcutShell = New-Object -ComObject WScript.Shell
+$qaFoundShortcuts = @()
+foreach ($qaCandidates in @(
+  @((Join-Path $qaDesktop 'CODEPLANT ATTENTION.lnk'),(Join-Path $env:USERPROFILE 'Desktop\CODEPLANT ATTENTION.lnk')),
+  @((Join-Path $qaPrograms 'CODEPLANT ATTENTION.lnk'),(Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\CODEPLANT ATTENTION.lnk'))
+)) {
+  $qaShortcut = $qaCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if (-not $qaShortcut) { throw ('Shortcut missing from profile: '+($qaCandidates -join ', ')) }
+  if ($qaShortcutShell.CreateShortcut($qaShortcut).TargetPath -ne $qaExe) { throw 'Shortcut target mismatch' }
+  $qaFoundShortcuts += $qaShortcut
 }
 $qaRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -like 'CODEPLANT ATTENTION*' -and $_.DisplayVersion -eq '0.7.0' }
 if (-not $qaRegistration) { throw 'Installed-app registration missing' }
@@ -63,4 +71,4 @@ if (-not $qaUninstaller) { throw 'Uninstaller missing' }
 $qaUninstall = Start-Process -FilePath $qaUninstaller.FullName -ArgumentList '/S' -Wait -PassThru
 for ($qaTry=0; $qaTry -lt 30 -and (Test-Path -LiteralPath $qaExe); $qaTry++) { Start-Sleep -Seconds 1 }
 if ((Test-Path -LiteralPath $qaExe) -or -not (Test-Path -LiteralPath $qaSentinel)) { throw 'Uninstall or data preservation failed' }
-@{ok=$true;wizardTitle=$qaWizardTitle;unicodeInstallPath=$true;cleanProfile=$true;globalToolsAbsent=$true;shortcuts=$true;installedAppsRegistration=$true;uninstallPreservesData=$true;realModelCall=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $qaEvidence 'installer-result.json') -Encoding utf8
+@{ok=$true;wizardTitle=$qaWizardTitle;unicodeInstallPath=$true;cleanProfile=$true;globalToolsAbsent=$true;shortcuts=$qaFoundShortcuts;installedAppsRegistration=$true;uninstallPreservesData=$true;realModelCall=$false} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $qaEvidence 'installer-result.json') -Encoding utf8

@@ -101,7 +101,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Install and verify Windows on a clean profile
-        if: matrix.platform == 'win32'
+        if: matrix.platform == 'win32' && !inputs.windows_only
         shell: pwsh
         run: ./scripts/check-installer.ps1
         env:
@@ -144,6 +144,34 @@ jobs:
           path: |
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Setup.exe
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Mac.dmg
+  windows-verify:
+    needs: package
+    if: ${{ always() && inputs.windows_only && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: LECTURE_1/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-win32
+          path: LECTURE_1/desktop/dist
+          run-id: ${{ inputs.package_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Install and verify Windows on a clean profile
+        shell: pwsh
+        run: ./scripts/check-installer.ps1
+        env:
+          ATTENTION_SMOKE_DIR: ${{ github.workspace }}/smoke-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-win32
+          path: smoke-output/smoke
   mac-intel:
     needs: package
     if: ${{ always() && !inputs.windows_only && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
@@ -183,8 +211,8 @@ jobs:
           name: smoke-darwin-intel
           path: smoke-output-intel/smoke
   release:
-    needs: [package, mac-intel]
-    if: ${{ always() && (inputs.windows_only || needs.mac-intel.result == 'success') && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
+    needs: [package, mac-intel, windows-verify]
+    if: ${{ always() && ((inputs.windows_only && needs.windows-verify.result == 'success') || (!inputs.windows_only && needs.mac-intel.result == 'success')) && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -2,6 +2,8 @@
 
 [Windows 실행 파일](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Windows.exe) · [Mac 앱](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Mac.dmg)
 
+[실제 패키지 검수 결과와 SHA256](검수결과.md)
+
 Windows x64용 포터블 EXE와 Mac Apple Silicon·Intel용 Universal DMG를 배포합니다. Mac 앱은 macOS 13 이상을 기준으로 합니다. Windows는 Windows 10 22H2 이상을 기준으로 합니다.
 
 ## 사용하기

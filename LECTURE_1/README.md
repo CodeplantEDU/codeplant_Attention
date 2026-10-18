@@ -5,7 +5,7 @@ Codex·Claude·Gemini 중 하나를 메인으로 선택하고, 양쪽의 역할�
 | 필요한 것 | 열 파일 |
 |---|---|
 | Windows EXE · Mac 앱 받기 | [desktop/README.md](desktop/README.md) |
-| 지금 프로그램 실행 | [site/실행.cmd](site/실행.cmd) |
+| Windows에서 소스로 실행 | [site/실행.cmd](site/실행.cmd) |
 | 설치·로그인·오류 해결 | [site/README.md](site/README.md) |
 | Codex에 복사할 지시문 | [Codex에_이렇게_입력.md](docs/Codex에_이렇게_입력.md) |
 | 2시간 핵심 시연 수업 | [2시간_시연_운영안.md](docs/2시간_시연_운영안.md) |
@@ -30,7 +30,7 @@ AGENTS.md와 LECTURE_1/site/README.md를 읽고 AI 대화 스튜디오를 실행
 
 처음 받는 분은 저장소 첫 화면의 **[Codex로 설치하기](../README.md#codex-install)**를 따라 ZIP 다운로드 → 로컬 폴더 선택 → 설치 요청문 입력 순서로 시작하세요.
 
-Windows에서 Node.js 22 이상, Python 3.10 이상과 사용할 AI CLI 하나를 준비합니다. 사용할 AI 하나만 설치하고 본인 계정으로 로그인하면 됩니다. 왕복에는 선택한 메인과 상대 두 계정이 필요합니다. 별도 API 키나 MCP 서버는 기본 실행에 필요하지 않습니다.
+실행 앱은 Node·문서 엔진을 포함하며 사용할 AI 도구를 자동으로 준비합니다. **아래는 소스 실행 안내입니다.** Windows에서 Node.js 22 이상, Python 3.10 이상과 사용할 AI CLI 하나를 준비합니다. 사용할 AI 하나만 설치하고 본인 계정으로 로그인하면 됩니다. 왕복에는 선택한 메인과 상대 두 계정이 필요합니다. 별도 API 키나 MCP 서버는 기본 실행에 필요하지 않습니다.
 
 `site` 폴더에서:
 

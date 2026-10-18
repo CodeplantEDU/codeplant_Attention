@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {diagnose} from './diagnostics.mjs';
+import {antigravityExecutable,antigravityModels,parseAntigravity} from './antigravity.mjs';
 
 const isFile=p=>{try{return existsSync(p);}catch{return false;}};
 export const nodeExecutable=(env=process.env)=>env.DIALOGUE_NODE_EXE||process.execPath;
@@ -19,6 +20,7 @@ export function geminiEntrypoint(env=process.env){
 }
 export function geminiHasLogin(env=process.env){return isFile(path.join(env.GEMINI_CLI_HOME||path.join(os.homedir(),'.gemini'),'oauth_creds.json'));}
 export function executable(provider,env=process.env){
+  if(provider==='antigravity')return antigravityExecutable(env);
   if(provider==='gemini'){geminiEntrypoint(env);return nodeExecutable(env);}
   const name=provider+(process.platform==='win32'?'.exe':'');
   const override=env[provider==='codex'?'DIALOGUE_CODEX_EXE':'DIALOGUE_CLAUDE_EXE'];
@@ -98,6 +100,12 @@ async function codexModels(exe,cwd){
 export async function connection(provider,cwd){
   try{
     const exe=executable(provider);
+    if(provider==='antigravity'){
+      const v=await capture(exe,['--version'],{cwd});if(v.code!==0)throw Error('Antigravity 실행 실패');
+      const [auth,list]=await Promise.all([capture(exe,['-p','/usage','--output-format','json'],{cwd}),capture(exe,['models'],{cwd})]);
+      let loggedIn=false;try{loggedIn=auth.code===0&&JSON.parse(auth.out).status==='SUCCESS';}catch{}
+      return {installed:true,loggedIn,version:v.out.trim().slice(0,70),message:loggedIn?'Antigravity 공식 인증 확인':'로그인을 누른 뒤 열린 터미널에서 인증하세요.',loginRunning:false,models:antigravityModels(list.out),modelListMessage:'설치된 agy models가 반환한 실제 목록 · 내부 에이전트 연결은 현재 미지원'};
+    }
     if(provider==='gemini'){
       const v=await capture(exe,[geminiEntrypoint(),'--version'],{cwd});
       if(v.code!==0)throw Error('Gemini 실행 실패');
@@ -123,6 +131,10 @@ export async function connection(provider,cwd){
 }
 
 export function argumentsFor(provider,{roles=[],model=''}={}){
+  if(provider==='antigravity'){
+    if(roles.length)throw Error('Antigravity 내부 에이전트 연결은 현재 지원하지 않습니다.');
+    return ['--input-format','stream-json','--output-format','stream-json','--mode','plan','--disable-slash-commands',...(model?['--model',model]:[])];
+  }
   if(provider==='gemini'){
     if(roles.length)throw Error('Gemini 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
     return [geminiEntrypoint(),'--output-format','stream-json','--approval-mode','default',...(model?['--model',model]:[]),'-p','제공된 사용자 요청에 답하세요. 도구를 사용하지 마세요.'];
@@ -143,6 +155,7 @@ export function argumentsFor(provider,{roles=[],model=''}={}){
 }
 
 export function parseEvent(provider,event,emit,state){
+  if(provider==='antigravity'){parseAntigravity(event,emit,state);return;}
   if(provider==='codex'){
     if(event.type==='thread.started')state.threadId=event.thread_id;
     if(event.type==='item.completed'&&event.item?.type==='agent_message'){
@@ -242,7 +255,7 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
   const result=await new Promise((resolve,reject)=>{
     const child=spawn(executable(provider),argumentsFor(provider,{roles,model}),{cwd,env:provider==='gemini'?geminiEnvironment():loginEnvironment(),windowsHide:true,shell:false});
     let buffer='',size=0,settled=false,stderr='',eventError='';
-    function parse(line){const event=JSON.parse(line);if(event.type==='error'||event.type==='turn.failed'||event.is_error||event.type==='result'&&event.status&&event.status!=='success')eventError=JSON.stringify(event).slice(-16000);parseEvent(provider,event,emit,state);}
+    function parse(line){const event=JSON.parse(line);if(event.type==='error'||event.type==='turn.failed'||event.is_error||event.type==='result'&&event.status&&event.status!=='success'||event.event==='result'&&event.result?.status!=='SUCCESS')eventError=JSON.stringify(event).slice(-16000);parseEvent(provider,event,emit,state);}
     const timer=setTimeout(()=>{state.error='응답 대기 시간을 초과했습니다.';kill(child);},timeout);
     const poll=setInterval(()=>scan().catch(()=>{}),600);
     const abort=()=>{state.error='중지됐습니다.';kill(child);};signal?.addEventListener('abort',abort,{once:true});
@@ -269,12 +282,13 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
       }
       else done();
     });
-    child.stdin.on('error',()=>{});child.stdin.end(prompt);
+    child.stdin.on('error',()=>{});child.stdin.end(provider==='antigravity'?JSON.stringify({event:'user',message:{content:prompt}})+'\n':prompt);
   });
   return result;
 }
 
 export function beginLogin(provider,cwd,onUrl,onExit){
+  if(provider==='antigravity')return antigravityAuth(cwd,onExit);
   if(provider==='gemini'){
     const child=spawn(nodeExecutable(),[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'login'],{cwd,env:geminiEnvironment(),windowsHide:true,shell:false});
     let buffer='',finished=false;
@@ -312,6 +326,7 @@ export function beginLogin(provider,cwd,onUrl,onExit){
 }
 
 export async function logoutCLI(provider,cwd){
+  if(provider==='antigravity')return new Promise((resolve,reject)=>antigravityAuth(cwd,(ok,message)=>ok?resolve():reject(Error(message)),true));
   if(!['codex','claude','gemini'].includes(provider))throw Error('AI를 선택하세요.');
   const result=provider==='gemini'
     ?await capture(nodeExecutable(),[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd})
@@ -319,4 +334,17 @@ export async function logoutCLI(provider,cwd){
   if(result.code!==0)throw Error('로그아웃에 실패했습니다. CLI 설치와 인증 파일 권한을 확인하세요.');
   const state=await connection(provider,cwd);
   if(!state.installed||state.loggedIn)throw Error('로그아웃 후 연결 해제를 확인하지 못했습니다. 새로 확인을 눌러주세요.');
+}
+function antigravityAuth(cwd,onExit,logout=false){
+  if(process.platform!=='win32')throw Error('터미널에서 agy를 실행해 로그인하거나 /logout을 입력한 뒤 새로 확인하세요.');
+  const exe=antigravityExecutable().replaceAll("'","''");
+  const command=`$p=Start-Process -FilePath '${exe}' ${logout?"-ArgumentList '--prompt-interactive','/logout' ":''}-PassThru; $p.WaitForExit()`;
+  const child=spawn('powershell.exe',['-NoProfile','-Command',command],{cwd,env:loginEnvironment(),windowsHide:true,stdio:'ignore'});
+  let finished=false,checking=false;
+  function finish(ok,message){if(finished)return;finished=true;clearTimeout(timer);clearInterval(poll);onExit(ok,message);kill(child);}
+  const timer=setTimeout(()=>finish(false,'Antigravity 인증 시간이 초과됐습니다. 터미널에서 인증 후 새로 확인하세요.'),300000);
+  const poll=setInterval(async()=>{if(checking||finished)return;checking=true;try{const state=await connection('antigravity',cwd);if(state.installed&&state.loggedIn!==logout)finish(true,logout?'Antigravity 로그아웃 확인':'Antigravity 로그인 확인');}finally{checking=false;}},5000);
+  child.on('error',()=>finish(false,'Antigravity 인증 터미널을 열지 못했습니다.'));
+  child.on('close',async()=>{if(!finished){const s=await connection('antigravity',cwd);finish(s.installed&&s.loggedIn!==logout,'Antigravity 인증 상태를 새로 확인하세요.');}});
+  return ()=>{finished=true;clearTimeout(timer);clearInterval(poll);kill(child);};
 }

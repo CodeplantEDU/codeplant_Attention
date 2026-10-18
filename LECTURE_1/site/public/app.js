@@ -1,7 +1,7 @@
 'use strict';
 
 const $ = (selector, root = document) => root.querySelector(selector);
-const providerNames = { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini' };
+const providerNames = { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' };
 const providers = Object.keys(providerNames);
 const cloudMode = !['127.0.0.1', 'localhost'].includes(location.hostname);
 const apiBase = cloudMode ? 'http://127.0.0.1:49321' : '';
@@ -276,7 +276,7 @@ function connectRoleEditor(side, presets) {
 }
 function selectedPeers(){return [$('#peer-select').value,$('#second-peer-select').value].filter(Boolean);}
 function readPeerSettings(){
-  return Object.fromEntries(selectedPeers().map((p,i)=>[p,{role:$(i?'#peer2-role':'#peer-role').value.trim(),agentRoles:p==='gemini'?[]:readRoles(i?'#peer2-role-list':'#peer-role-list')}]));
+  return Object.fromEntries(selectedPeers().map((p,i)=>[p,{role:$(i?'#peer2-role':'#peer-role').value.trim(),agentRoles:p==='antigravity'?[]:readRoles(i?'#peer2-role-list':'#peer-role-list')}]));
 }
 
 function getSelectedRun() {
@@ -515,15 +515,15 @@ function updateControls() {
   for (const option of second.options) option.disabled = Boolean(option.value)&&(option.value===main||option.value===peer);
   $('#dialogue-settings').hidden = !peer;
   $('#peer-role').disabled = !peer;
-  $('#main-agent-support').hidden = main !== 'gemini';
-  $('.group-description').hidden = main === 'gemini';
-  $('#role-list').hidden = main === 'gemini';
-  $('#add-role').hidden = main === 'gemini';
-  $('.peer-agent-settings').hidden = !peer || peer === 'gemini';
-  document.querySelectorAll('#role-list input, #role-list textarea, #role-list select').forEach(element => { element.disabled = main === 'gemini'; });
-  document.querySelectorAll('#peer-role-list input, #peer-role-list textarea, #peer-role-list select').forEach(element => { element.disabled = !peer || peer === 'gemini'; });
-  $('.peer2-agent-settings').hidden=!peer2||peer2==='gemini';
-  document.querySelectorAll('#peer2-role-list input, #peer2-role-list textarea, #peer2-role-list select').forEach(element=>{element.disabled=!peer2||peer2==='gemini';});
+  $('#main-agent-support').hidden = main !== 'antigravity';
+  $('.group-description').hidden = main === 'antigravity';
+  $('#role-list').hidden = main === 'antigravity';
+  $('#add-role').hidden = main === 'antigravity';
+  $('.peer-agent-settings').hidden = !peer || peer === 'antigravity';
+  document.querySelectorAll('#role-list input, #role-list textarea, #role-list select').forEach(element => { element.disabled = main === 'antigravity'; });
+  document.querySelectorAll('#peer-role-list input, #peer-role-list textarea, #peer-role-list select').forEach(element => { element.disabled = !peer || peer === 'antigravity'; });
+  $('.peer2-agent-settings').hidden=!peer2||peer2==='antigravity';
+  document.querySelectorAll('#peer2-role-list input, #peer2-role-list textarea, #peer2-role-list select').forEach(element=>{element.disabled=!peer2||peer2==='antigravity';});
   for (const provider of providers) {
     const needed = provider === main || peers.includes(provider);
     const custom = $(`#${provider}-model-select`).value === '__custom__';
@@ -776,8 +776,8 @@ $('#run-form').addEventListener('submit', event => {
   const main = $('input[name="main"]:checked').value;
   const peer = $('#peer-select').value || null;
   const peers=selectedPeers(),peerSettings=readPeerSettings();
-  const agentRoles = main === 'gemini' ? [] : readRoles('#role-list');
-  const peerAgentRoles = !peer || peer === 'gemini' ? [] : readRoles('#peer-role-list');
+  const agentRoles = main === 'antigravity' ? [] : readRoles('#role-list');
+  const peerAgentRoles = !peer || peer === 'antigravity' ? [] : readRoles('#peer-role-list');
   if ([...agentRoles, ...Object.values(peerSettings).flatMap(s=>s.agentRoles)].some(role => !role.name || !role.task)) { notice('각 AI 서브 에이전트의 역할 이름과 할 일을 입력해주세요.'); return; }
   const mainRole = $('#main-role').value.trim();
   const peerRole = $('#peer-role').value.trim();

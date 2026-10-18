@@ -25,7 +25,7 @@ test('installation is authenticated, validates targets, reports progress and blo
   assert.equal(calls,0);
   assert.equal((await s.post('/api/install',{provider:'claude'})).status,202);
   const progress=await s.state();assert.equal(progress.installing,'claude');assert.equal(progress.installations.claude.status,'installing');
-  for(const [route,body] of [['/api/shutdown',{}],['/api/login',{provider:'codex'}],['/api/logout',{provider:'codex'}],['/api/runs',{main:'codex',prompt:'test'}],['/api/install',{provider:'gemini'}]])assert.equal((await s.post(route,body)).status,409);
+  for(const [route,body] of [['/api/shutdown',{}],['/api/login',{provider:'codex'}],['/api/logout',{provider:'codex'}],['/api/runs',{main:'codex',prompt:'test'}],['/api/install',{provider:'antigravity'}]])assert.equal((await s.post(route,body)).status,409);
   complete('public success');const state=await finished(s);
   assert.equal(state.installations.claude.status,'completed');assert.equal(state.connections.claude.installed,true);assert.equal(calls,1);
   assert.equal((await s.post('/api/install',{provider:'claude'})).status,200);assert.equal(calls,1);
@@ -41,7 +41,7 @@ test('failed install can retry and document packages use the same protected stat
 });
 test('private CLI paths support native platforms, avoid shell wrappers and only change the supplied environment',async()=>{
   await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'tools-'));
-  for(const platform of ['win32','darwin','linux'])for(const arch of ['x64','arm64'])for(const p of ['codex','claude','gemini']){
+  for(const platform of ['win32','darwin','linux'])for(const arch of ['x64','arm64'])for(const p of ['codex','claude','antigravity']){
     assert.ok(localToolPaths(dir,p,platform,arch).every(file=>path.isAbsolute(file)&&! /\.(cmd|bat|ps1)$/.test(file)));
   }
   assert.throws(()=>localToolPaths(dir,'../bad'));

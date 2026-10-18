@@ -116,7 +116,7 @@ test('hosted API requests target loopback and authenticate both reads and writes
   assert.equal(calls[1].options.method,'POST');
 });
 test('one connected main enables starting; only the selected peer is required for dialogue',()=>{
-  for(const main of ['codex','claude','gemini']){
+  for(const main of ['codex','claude','antigravity']){
     const elements=new Map();
     const $=selector=>{
       if(!elements.has(selector))elements.set(selector,{value:'',children:[],options:[],textContent:''});
@@ -126,11 +126,11 @@ test('one connected main enables starting; only the selected peer is required fo
     const {context,helpers}=helperContext({document:{querySelector:$,querySelectorAll:()=>[]}});
     vm.runInContext(`currentState={connections:{${main}:{loggedIn:true}},runs:[],activeRunId:null}`,context);
     helpers.updateControls();assert.equal($('#start-run').disabled,false);
-    assert.equal($('#main-agent-support').hidden,main!=='gemini');
-    const unused=main==='codex'?'gemini':'codex';
+    assert.equal($('#main-agent-support').hidden,main!=='antigravity');
+    const unused=main==='codex'?'antigravity':'codex';
     $(`#${unused}-model-select`).value='__custom__';
     helpers.updateControls();assert.equal($(`#${unused}-model`).disabled,true);assert.equal($(`#${unused}-model`).required,false);
-    $('#peer-select').value=main==='codex'?'gemini':'codex';
+    $('#peer-select').value=main==='codex'?'antigravity':'codex';
     helpers.updateControls();assert.equal($('#start-run').disabled,true);
     $('#peer-select').value='';helpers.updateControls();assert.equal($('#start-run').disabled,false);
   }
@@ -139,19 +139,19 @@ test('add and remove peer controls exclude main and duplicates, require both acc
   const elements=new Map();
   const element=selector=>{if(!elements.has(selector))elements.set(selector,{value:'',children:[],options:[],events:{},addEventListener(n,fn){this.events[n]=fn;}});return elements.get(selector);};
   element('input[name="main"]:checked').value='codex';element('#peer-select').value='claude';
-  for(const id of ['#peer-select','#second-peer-select'])element(id).options=['','codex','claude','gemini'].map(value=>({value}));
-  element('#gemini-model-select').value='__custom__';
+  for(const id of ['#peer-select','#second-peer-select'])element(id).options=['','codex','claude','antigravity'].map(value=>({value}));
+  element('#antigravity-model-select').value='__custom__';
   const {context,helpers}=helperContext({document:{querySelector:element,querySelectorAll:()=>[]}});
-  vm.runInContext("currentState={connections:{codex:{loggedIn:true},claude:{loggedIn:true},gemini:{loggedIn:false}},runs:[],activeRunId:null}",context);
+  vm.runInContext("currentState={connections:{codex:{loggedIn:true},claude:{loggedIn:true},antigravity:{loggedIn:false}},runs:[],activeRunId:null}",context);
   const start=source.indexOf("$('#add-peer').addEventListener"),end=source.indexOf('for (const provider of providers)',start);
   vm.runInContext(source.slice(start,end),context);
   element('#add-peer').events.click();
-  assert.equal(element('#second-peer-select').value,'gemini');assert.equal(element('#start-run').disabled,true);assert.equal(element('#gemini-model').disabled,false);
-  vm.runInContext('currentState.connections.gemini.loggedIn=true',context);helpers.updateControls();assert.equal(element('#start-run').disabled,false);
+  assert.equal(element('#second-peer-select').value,'antigravity');assert.equal(element('#start-run').disabled,true);assert.equal(element('#antigravity-model').disabled,false);
+  vm.runInContext('currentState.connections.antigravity.loggedIn=true',context);helpers.updateControls();assert.equal(element('#start-run').disabled,false);
   assert.equal(element('#second-peer-select').options.find(o=>o.value==='codex').disabled,true);assert.equal(element('#second-peer-select').options.find(o=>o.value==='claude').disabled,true);
   element('#remove-peer').events.click();assert.equal(element('#second-peer-select').value,'');assert.equal(element('#second-peer-group').hidden,true);
   element('#add-peer').events.click();element('input[name="main"]:checked').value='claude';helpers.updateControls();
-  assert.equal(element('#peer-select').value,'gemini');assert.equal(element('#second-peer-select').value,'');
+  assert.equal(element('#peer-select').value,'antigravity');assert.equal(element('#second-peer-select').value,'');
 });
 
 test('round settings accept custom positive integers and unlimited conditions, rejecting invalid counts', () => {

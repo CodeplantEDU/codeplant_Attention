@@ -1,6 +1,6 @@
 ---
 name: attention-codex
-description: Run ATTENTION work from the current Codex chat, call selected Claude or Gemini peers, publish actual replies and files to the local live viewer, and diagnose failed calls. Use when the user asks to work through ATTENTION with Codex as the main AI.
+description: Run ATTENTION work from the current Codex chat, call selected Claude or Antigravity peers, publish actual replies and files to the local live viewer, and diagnose failed calls. Use when the user asks to work through ATTENTION with Codex as the main AI.
 ---
 
 # ATTENTION · Codex가 메인인 작업
@@ -9,7 +9,7 @@ description: Run ATTENTION work from the current Codex chat, call selected Claud
 
 ## 앱 찾기와 실행
 
-처음 실행하거나 필요한 도구가 없으면 이 스킬의 `scripts/setup.ps1`을 Windows PowerShell로 실행한다. 앱이 없으면 고정된 공개 GitHub 릴리스 ZIP과 공식 API의 SHA256을 검증해 내려받는다. 기본은 Claude·Gemini CLI, 문서 엔진, 이 스킬 설치, 서버·화면 열기까지다. 앱이 있으면 Bootstrap.ps1을 재사용한다. 특정 상대만 요청받으면 `-Providers claude` 또는 `-Providers gemini`, 문서가 필요 없으면 `-SkipDocuments`를 전달한다. 필요한 설치는 이 요청에 포함되지만 계정 로그인 인증은 사용자가 직접 한다. 시스템 PATH나 기존 CLI를 덮어쓰지 않는다. Windows에서 Node가 없으면 공식 ZIP을 해시 확인 후 앱 전용 폴더에 준비하며, Python이 없으면 WinGet의 사용자 범위 공식 패키지를 설치한다. WinGet 부재·OS 제한·권한 오류는 구체적으로 보고하고 보안 설정을 우회하지 않는다. Mac은 기존 Node.js 22 이상에서 `node tools/bootstrap.mjs`로 CLI·문서 패키지 준비가 가능하며, Node/Python 자체 자동 설치는 Windows만 지원한다.
+처음 실행하거나 필요한 도구가 없으면 이 스킬의 `scripts/setup.ps1`을 Windows PowerShell로 실행한다. 앱이 없으면 고정된 공개 GitHub 릴리스 ZIP과 공식 API의 SHA256을 검증해 내려받는다. 기본은 Claude·Antigravity CLI, 문서 엔진, 이 스킬 설치, 서버·화면 열기까지다. 앱이 있으면 Bootstrap.ps1을 재사용한다. 특정 상대만 요청받으면 `-Providers claude` 또는 `-Providers antigravity`, 문서가 필요 없으면 `-SkipDocuments`를 전달한다. 필요한 설치는 이 요청에 포함되지만 계정 로그인 인증은 사용자가 직접 한다. 시스템 PATH나 기존 CLI를 덮어쓰지 않는다. Windows에서 Node가 없으면 공식 ZIP을 해시 확인 후 앱 전용 폴더에 준비하며, Python이 없으면 WinGet의 사용자 범위 공식 패키지를 설치한다. WinGet 부재·OS 제한·권한 오류는 구체적으로 보고하고 보안 설정을 우회하지 않는다. Mac은 기존 Node.js 22 이상에서 `node tools/bootstrap.mjs`로 CLI·문서 패키지 준비가 가능하며, Node/Python 자체 자동 설치는 Windows만 지원한다.
 
 사용자가 지정한 앱 폴더를 우선 사용한다. 이 PC의 기본 위치는 `~/Desktop/국민대학교_바탕/ATTENTION_개인서버`, 소스 체크아웃은 `codeplant_Attention/LECTURE_1/site`다. `package.json`, `tools/control.mjs`, `README.md`로 확인하고 이후 명령은 앱 폴더에서 실행한다.
 
@@ -20,7 +20,7 @@ description: Run ATTENTION work from the current Codex chat, call selected Claud
 사용자의 지시·선택한 상대·모델·역할로 요청 JSON을 작성한다. 설정 예:
 
 ```json
-{"prompt":"사용자가 실제 요청한 작업","peers":["claude","gemini"],"models":{"claude":"","gemini":""},"attachmentIds":[],"peerSettings":{"claude":{"role":"논리와 실행 가능성 검토","agentRoles":[]},"gemini":{"role":"근거와 누락 검토","agentRoles":[]}}}
+{"prompt":"사용자가 실제 요청한 작업","peers":["claude","antigravity"],"models":{"claude":"","antigravity":""},"attachmentIds":[],"peerSettings":{"claude":{"role":"논리와 실행 가능성 검토","agentRoles":[]},"antigravity":{"role":"근거와 누락 검토","agentRoles":[]}}}
 ```
 
 `node tools/control.mjs task 요청.json`은 메인 AI를 호출하지 않고 작업을 만들며 ID·뷰어 URL을 반환한다. 그 URL을 Codex 패널의 브라우저로 열어 사용자에게 보여준다. 브라우저 정책이 막으면 우회하지 말고 URL을 알려준다. 사이트의 대화 이어가기 대신 이 채팅에서 계속 받는다.

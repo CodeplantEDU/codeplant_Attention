@@ -4,11 +4,11 @@ EXE를 설치하지 않고, 각자 PC에서 서버를 켜 브라우저로 사용
 
 ## 시작하기
 
-**Codex가 메인인 권장 방식:** Windows는 **자동준비.cmd**를 실행합니다. Node.js가 없으면 공식 ZIP·SHA256 검증 후 앱 폴더에 준비합니다. Claude·Gemini CLI와 문서 패키지는 없는 것만 설치하고 `attention-codex` 스킬과 개인 서버·화면을 준비합니다. Python이 없으면 WinGet 사용자 범위 설치를 시도합니다. WinGet이 없거나 설치 권한·네트워크가 막히면 오류를 표시합니다. 보안 설정이나 인증을 우회하지 않습니다. 로그인은 본인이 완료합니다.
+**Codex가 메인인 권장 방식:** Windows는 **자동준비.cmd**를 실행합니다. Node.js가 없으면 공식 ZIP·SHA256 검증 후 앱 폴더에 준비합니다. Claude·Antigravity CLI와 문서 패키지는 없는 것만 설치하고 `attention-codex` 스킬과 개인 서버·화면을 준비합니다. Python이 없으면 WinGet 사용자 범위 설치를 시도합니다. WinGet이 없거나 설치 권한·네트워크가 막히면 오류를 표시합니다. 보안 설정이나 인증을 우회하지 않습니다. 로그인은 본인이 완료합니다.
 
 새 Codex 대화에서 다음처럼 입력하세요.
 
-> $attention-codex 필요한 도구를 자동으로 준비하고 작업실을 열어줘. Codex가 메인을 맡고 Claude와 Gemini를 상대로 [내 과제]를 진행해. 각 AI의 실제 답변·자료·진행과 오류 조치를 화면에 바로 보여줘.
+> $attention-codex 필요한 도구를 자동으로 준비하고 작업실을 열어줘. Codex가 메인을 맡고 Claude와 Antigravity를 상대로 [내 과제]를 진행해. 각 AI의 실제 답변·자료·진행과 오류 조치를 화면에 바로 보여줘.
 
 이미 Node가 있으면 `node tools/bootstrap.mjs`도 같은 준비를 실행합니다. `--providers claude`로 선택한 AI만 준비하고 `--skip-documents`로 문서 도구를 생략할 수 있습니다. `--check-only`는 설치·서버 실행 없이 확인합니다. Mac의 Node/Python 자체 설치는 자동화하지 않았습니다. 준비 스크립트는 AI에게 질문하지 않습니다.
 
@@ -20,7 +20,7 @@ EXE를 설치하지 않고, 각자 PC에서 서버를 켜 브라우저로 사용
 4. 브라우저에서 **http://127.0.0.1:49322**가 열립니다. 서버 창은 켜 두세요. 종료는 Ctrl+C입니다.
 5. 연결 상태에서 사용할 AI를 확인하고, 필요한 경우 본인이 로그인합니다. 브라우저가 안 열리면 **로그인 화면 열기**를 누릅니다.
 
-공식 준비 안내: [Node.js](https://nodejs.org/en/download) · [Codex](https://developers.openai.com/codex/cli/) · [Claude Code](https://code.claude.com/docs/en/setup) · [Gemini CLI](https://geminicli.com/docs/get-started/installation/).
+공식 준비 안내: [Node.js](https://nodejs.org/en/download) · [Codex](https://developers.openai.com/codex/cli/) · [Claude Code](https://code.claude.com/docs/en/setup) · [Antigravity CLI](https://www.antigravity.google/docs/install?tab=cli).
 
 터미널에서는 npm start 또는 node tools/local.mjs로 실행합니다. npm install은 필요 없습니다. 기존 EXE, Electron, Vercel 또는 별도 연결 코드는 사용하지 않습니다.
 
@@ -56,7 +56,7 @@ TXT·MD·CSV·JSON·PDF·DOCX·PPTX를 올릴 수 있습니다. 파일 크기·�
 
 상대가 두 개이면 같은 메인 초안을 각 상대가 검토하고, 메인이 두 회신을 종합하는 것까지를 1회 왕복으로 셉니다. 선택한 모든 상대의 로그인이 필요하며, 상대 없이 메인 하나만 사용할 수도 있습니다.
 
-왕복 횟수는 1·2·3, 숫자 직접 입력, 제한 없이 중에서 선택합니다. 중지로 끝낼 수 있습니다. Codex·Claude의 서브 에이전트는 각 0~3개, Gemini 내부 에이전트는 현재 미지원입니다. 넓은 화면에서는 패널 경계를 드래그해 너비를 조절합니다.
+왕복 횟수는 1·2·3, 숫자 직접 입력, 제한 없이 중에서 선택합니다. 중지로 끝낼 수 있습니다. Codex·Claude의 서브 에이전트는 각 0~3개, Antigravity 내부 에이전트는 현재 미지원입니다. 넓은 화면에서는 패널 경계를 드래그해 너비를 조절합니다.
 
 ## 자료와 계정
 
@@ -76,6 +76,14 @@ Codex로 같은 서버를 제어할 때는 이 폴더에서 node tools/control.m
 
 오른쪽 연결 상태에서 원하는 AI의 **설치**를 누릅니다. 설치 중에는 상태를 표시하고 완료 후 **로그인** 버튼이 나타납니다. 이미 설치된 CLI는 그대로 사용하며, 설치됨으로 표시합니다. 실패하면 **다시 설치**를 누릅니다. 로그인은 본인이 공식 인증 화면에서 완료합니다.
 
-세 CLI는 공식 npm 레지스트리에서 검증한 고정 버전(Codex 0.163.0, Claude Code 2.1.302, Gemini 0.64.0)을 내려받아 .local-data/cli에 설치합니다. 전역 설치·계정·시스템 PATH를 덮어쓰지 않습니다. Node 설치에 포함된 npm이 필요하며, 첫 다운로드에는 인터넷이 필요합니다. 설치 파일과 캐시는 최초 다운로드 이후 디스크 공간을 사용하며 배포 ZIP에는 포함하지 않습니다.
+Codex 0.163.0과 Claude Code 2.1.302는 공식 npm 패키지를 사용합니다. Antigravity는 공식 업데이트 매니페스트의 네이티브 agy 바이너리를 내려받아 SHA512를 검증한 뒤 .local-data/cli/antigravity에 설치합니다. 모델 목록은 agy models의 실제 출력을 사용합니다. 전역 설치·계정·시스템 PATH를 덮어쓰지 않습니다. Node 설치에 포함된 npm이 필요하며, 첫 다운로드에는 인터넷이 필요합니다. 설치 파일과 캐시는 최초 다운로드 이후 디스크 공간을 사용하며 배포 ZIP에는 포함하지 않습니다.
 
 **문서 도구 설치**는 Python이 준비된 PC에서 requirements.txt의 패키지를 .local-data/python-packages에 설치합니다. 시스템의 다른 Python 프로젝트를 변경하지 않고 이 서버 프로세스에만 적용합니다. Python 자체가 없으면 옆의 Python 준비 안내에서 공식 설치를 마친 뒤 다시 누르세요. 설치 중에는 대화·계정 변경·서버 끝내기를 잠시 막습니다.
+
+## Antigravity 전환
+
+세 번째 연결은 Gemini CLI 대신 **Antigravity CLI(agy)**입니다. 기존 대화와 인증 파일은 보존하며 이전 Gemini 작업을 Antigravity가 답한 것으로 바꾸지 않습니다. 새 작업에서 Antigravity를 선택하세요. Antigravity 모델에 Gemini 또는 Claude라는 이름이 표시돼도 실행하는 프로그램과 인증은 agy입니다.
+
+Windows에서 로그인·로그아웃 버튼은 공식 CLI의 대화형 터미널을 열어 인증 절차를 진행하며, 읽기 전용 /usage 결과로 완료를 확인합니다. 로그인은 터미널이 여는 공식 브라우저에서 완료하세요. Mac은 터미널에서 agy로 로그인하고 /logout으로 로그아웃한 뒤 새로 확인하세요. 내부 에이전트 연결은 현재 지원하지 않습니다.
+
+호출은 공식 stream-json 입력·출력을 사용합니다. 계획 모드와 슬래시 명령 확장 비활성화로 실행하며 --dangerously-skip-permissions는 사용하지 않습니다. 공식 사양: https://www.antigravity.google/docs/cli/headless/

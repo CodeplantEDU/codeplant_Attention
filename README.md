@@ -1,10 +1,10 @@
 # ATTENTION · 개인 AI 작업실
 
-각자의 PC에서 서버를 켜고, 본인 Codex·Claude Code·Gemini 계정으로 작업하는 가벼운 브라우저 앱입니다. EXE 설치나 Vercel 연결 없이 사용합니다.
+각자의 PC에서 서버를 켜고, 본인 Codex·Claude Code·Antigravity 계정으로 작업하는 가벼운 브라우저 앱입니다. EXE 설치나 Vercel 연결 없이 사용합니다.
 
 ## 실행
 
-**[개인 서버 ZIP 받기](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/local-v0.9.0/ATTENTION-Local.zip)** → 압축 해제 → Windows는 자동준비.cmd 실행 → 새 Codex 채팅에서 $attention-codex로 지시합니다.
+**[개인 서버 ZIP 받기](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/local-v0.10.0/ATTENTION-Local.zip)** → 압축 해제 → Windows는 자동준비.cmd 실행 → 새 Codex 채팅에서 $attention-codex로 지시합니다.
 
 브라우저 주소: **http://127.0.0.1:49322**. 서버 창은 켜 두세요. Mac은 폴더 안에서 npm start를 실행합니다.
 

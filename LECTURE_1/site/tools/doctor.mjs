@@ -10,7 +10,7 @@ adoptLocalTools(dataDir);adoptDocumentTools(dataDir);
 
 console.log('ATTENTION / 실행 환경 확인');
 console.log('Node.js '+process.versions.node+(Number(process.versions.node.split('.')[0])>=22?' · 사용 가능':' · 22 이상으로 업데이트 필요'));
-for(const provider of ['codex','claude','gemini']){
+for(const provider of ['codex','claude','antigravity']){
   const state=await connection(provider,process.cwd());
   console.log(`${provider}: ${state.installed?(state.loggedIn?'연결됨':'설치됨 · 로그인 필요'):'설치되지 않음'}`);
 }

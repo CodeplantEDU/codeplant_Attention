@@ -1,5 +1,17 @@
 # 개인 서버 0.8.0 검수 · 2026-10-18
 
+## 0.10.0 Antigravity CLI 전환
+
+현재 개인 서버의 세 번째 선택지를 Gemini CLI에서 Antigravity CLI(agy)로 교체했다. 기존 자료·기록·계정 파일은 삭제하지 않는다. 이전 Gemini 기록의 발언자를 Antigravity로 바꾸지 않으며 새 작업에 새 연결을 선택한다. 기존 Gemini 호환 모듈은 과거 형식 검사에 남지만 현재 UI·자동 준비·신규 API 선택지에는 노출하지 않는다.
+
+공식 headless 입력은 NDJSON user 이벤트, 출력은 init/step_update/result다. 실제 성공 결과만 완료로 표시하며 오류와 중간 텍스트를 보존한다. 모델 이름을 만들어 넣지 않고 agy models 출력을 사용한다. 계획 모드로 실행하고 슬래시 명령 확장과 무조건 권한 허용은 사용하지 않는다. 내부 에이전트 연결은 미지원이다.
+
+현재 개인 서버 테스트 68개 통과. 공식 CLI 1.4.2를 SHA512 검증 후 별도 검수 폴더와 앱 전용 폴더에 실제 설치했다. --help, models, 읽기 전용 /usage 명령으로 설치 옵션·실제 모델 목록·이 PC의 기존 공식 인증을 확인했다. 인증 토큰이나 사용량 원문은 기록하지 않았다. Windows 인증 터미널의 로그인·로그아웃 완료와 Mac 실행은 미검증이다. 이전 EXE 경로는 이번 변경 대상이 아니다.
+
+사양: [Antigravity headless](https://www.antigravity.google/docs/cli/headless/) · [공식 인증](https://www.antigravity.google/docs/install?tab=cli).
+
+바탕화면 0.10.0 실제 서버에서 Codex-host 작업을 만들고 Antigravity에 공개 짧은 문장을 한 번 요청했다. 실제 모델 목록의 gemini-3.8-flash-low를 agy로 호출해 ATTENTION_OK 응답, 중간 텍스트 게시, 요청 completed 상태와 빈 오류를 확인했다. 사용자 참고자료는 보내지 않았다. Gemini 이름의 모델이지만 실행·인증은 Antigravity이며 Gemini CLI 호출이 아니다. 뷰어의 실제 브라우저 클릭·로그인 변경은 이번 검사에 포함하지 않았다.
+
 ## 0.9.0 Codex 채팅 메인·자동 준비 스킬
 
 현재 Codex 채팅이 작업을 생성·초안 게시·상대 호출·결과 정리를 제어하는 codex-host 모드를 추가했다. 메인 CLI 인증이나 중첩 호출 없이 작업을 시작한다. 각 상대의 실제 답변과 에이전트 이벤트는 기존 폴링 화면에 게시한다. Codex가 게시한 내용만 표시하며 채팅 전체를 자동 수집하지 않는다. 뷰어에서는 이 작업에 후속 CLI 호출을 만들지 않고 원래 Codex 채팅에서 이어간다.

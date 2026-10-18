@@ -1,4 +1,4 @@
-﻿param([string]$Providers='claude,gemini',[switch]$SkipDocuments,[switch]$NoStart,[switch]$NoBrowser,[switch]$CheckOnly)
+﻿param([string]$Providers='claude,antigravity',[switch]$SkipDocuments,[switch]$NoStart,[switch]$NoBrowser,[switch]$CheckOnly)
 $ErrorActionPreference='Stop'
 $nodePath=(Get-Command node.exe -ErrorAction SilentlyContinue).Source
 if($nodePath){$major=& $nodePath -p 'parseInt(process.versions.node)';if([int]$major -lt 22){$nodePath=$null}}

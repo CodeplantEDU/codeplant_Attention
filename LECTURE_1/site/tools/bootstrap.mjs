@@ -8,10 +8,10 @@ import {pythonExecutable} from '../lib/python.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url));
 export function setupOptions(args){
   const allowed=new Set(['--providers','--skip-documents','--no-start','--no-browser','--check-only']);
-  const options={providers:['claude','gemini'],documents:true,start:true,browser:true,checkOnly:false};
+  const options={providers:['claude','antigravity'],documents:true,start:true,browser:true,checkOnly:false};
   for(let i=0;i<args.length;i++){
     const arg=args[i];if(!allowed.has(arg))throw Error('알 수 없는 준비 옵션: '+arg);
-    if(arg==='--providers'){const list=(args[++i]||'').split(',');if(list.some(p=>!['codex','claude','gemini'].includes(p)))throw Error('설치할 AI 이름을 확인하세요.');options.providers=[...new Set(list)];}
+    if(arg==='--providers'){const list=(args[++i]||'').split(',');if(list.some(p=>!['codex','claude','antigravity'].includes(p)))throw Error('설치할 AI 이름을 확인하세요.');options.providers=[...new Set(list)];}
     if(arg==='--skip-documents')options.documents=false;
     if(arg==='--no-start')options.start=false;
     if(arg==='--no-browser')options.browser=false;

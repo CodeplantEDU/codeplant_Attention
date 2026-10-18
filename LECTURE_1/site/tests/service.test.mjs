@@ -13,21 +13,21 @@ import {setupOptions} from '../tools/bootstrap.mjs';
 
 const ready=async()=>({installed:true,loggedIn:true,version:'test',message:'test'});
 test('automatic preparation selects only requested providers and supports a non-mutating check',()=>{
-  assert.deepEqual(setupOptions([]),{providers:['claude','gemini'],documents:true,start:true,browser:true,checkOnly:false});
+  assert.deepEqual(setupOptions([]),{providers:['claude','antigravity'],documents:true,start:true,browser:true,checkOnly:false});
   assert.deepEqual(setupOptions(['--providers','claude,claude','--skip-documents','--check-only','--no-start','--no-browser']),{providers:['claude'],documents:false,start:false,browser:false,checkOnly:true});
   assert.throws(()=>setupOptions(['--providers','bad;command']));assert.throws(()=>setupOptions(['--unknown']));
 });
 test('Codex-host task streams real peers, preserves a failure, resumes selectively, and creates downloadable files without calling main CLI',async t=>{
   let attempts=0;const calls=[];
   const s=await setup(t,async(provider,{prompt,onEvent,model})=>{
-    calls.push(provider);assert.equal(model,provider==='claude'?'sonnet':'gemini-test');
+    calls.push(provider);assert.equal(model,provider==='claude'?'sonnet':'antigravity-test');
     assert.match(prompt,/Codex draft/);assert.match(prompt,/reference evidence/);
-    if(provider==='gemini'&&++attempts===1)throw Error('429 quota secret=do-not-publish');
+    if(provider==='antigravity'&&++attempts===1)throw Error('429 quota secret=do-not-publish');
     onEvent({kind:'mainText',text:provider+' partial'});
     await new Promise(r=>setTimeout(r,30));return {text:provider+' actual reply',agentCount:0};
   },async p=>p==='codex'?{installed:false,loggedIn:false}:ready());
   const uploaded=await s.post('/api/uploads',{name:'reference.txt',base64:Buffer.from('reference evidence').toString('base64')}).then(r=>r.json());
-  const created=await s.post('/api/tasks',{prompt:'Host workflow test',peers:['claude','gemini'],attachmentIds:[uploaded.id],models:{claude:'sonnet',gemini:'gemini-test'}});
+  const created=await s.post('/api/tasks',{prompt:'Host workflow test',peers:['claude','antigravity'],attachmentIds:[uploaded.id],models:{claude:'sonnet',antigravity:'antigravity-test'}});
   assert.equal(created.status,201);const {id,url}=await created.json();assert.match(url,new RegExp(id));assert.deepEqual(calls,[]);
   const api=(action,body)=>s.post(`/api/tasks/${id}/${action}`,body);
   assert.equal((await api('events',{kind:'peer',title:'fake',text:'fake reply'})).status,400);
@@ -36,17 +36,17 @@ test('Codex-host task streams real peers, preserves a failure, resumes selective
   assert.equal((await api('consult',{provider:'claude',model:'bad;command',prompt:'no'})).status,400);
   assert.equal((await api('consult',{provider:'claude',prompt:'Review Codex draft'})).status,202);
   let run=await wait(s.get,'waiting');assert.equal(run.requests[0].text,'claude actual reply');assert.ok(run.messages.some(m=>m.provider==='claude'&&m.text==='claude actual reply'));
-  assert.equal((await api('consult',{provider:'gemini',prompt:'Review Codex draft'})).status,202);
+  assert.equal((await api('consult',{provider:'antigravity',prompt:'Review Codex draft'})).status,202);
   run=await wait(s.get,'waiting');assert.equal(run.requests[1].diagnostic.code,'quota');assert.ok(!JSON.stringify(run).includes('do-not-publish'));assert.equal(run.requests[0].status,'completed');
-  const diagnostic=await control(['diagnose',id],{baseURL:s.url});assert.equal(diagnostic.diagnostic.provider,'gemini');
-  assert.equal((await api('consult',{provider:'gemini',prompt:'Review Codex draft'})).status,202);
-  const rows=[];const watched=await control(['watch',id,'2'],{baseURL:s.url,emit:row=>rows.push(row)});assert.equal(watched.status,'waiting');assert.ok(rows.some(m=>m.provider==='gemini'&&m.text==='gemini actual reply'));
+  const diagnostic=await control(['diagnose',id],{baseURL:s.url});assert.equal(diagnostic.diagnostic.provider,'antigravity');
+  assert.equal((await api('consult',{provider:'antigravity',prompt:'Review Codex draft'})).status,202);
+  const rows=[];const watched=await control(['watch',id,'2'],{baseURL:s.url,emit:row=>rows.push(row)});assert.equal(watched.status,'waiting');assert.ok(rows.some(m=>m.provider==='antigravity'&&m.text==='antigravity actual reply'));
   const made=await api('files',{files:[{name:'result.md',content:'Verified test result'}]});assert.equal(made.status,201);
   const {files}=await made.json();const content=await fetch(s.url+files[0].url).then(r=>r.text());assert.equal(content,'Verified test result');
   assert.equal((await api('files',{files:[{name:'../escape.md',content:'invalid'}]})).status,400);
   assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'site followup'})).status,409);
   assert.equal((await api('finish',{text:'Final based on both actual replies'})).status,200);
-  run=(await s.get()).runs[0];assert.equal(run.status,'completed');assert.deepEqual(calls,['claude','gemini','gemini']);
+  run=(await s.get()).runs[0];assert.equal(run.status,'completed');assert.deepEqual(calls,['claude','antigravity','antigravity']);
   const inspected=await control(['inspect',id],{baseURL:s.url});assert.equal(inspected.references[0].text,'reference evidence');
   const saved=JSON.parse(await readFile(path.join(s.dataDir,'runs.json'),'utf8'))[0];assert.equal(saved.final,run.final);
 });
@@ -131,10 +131,10 @@ for(const main of ['codex','claude'])test(`${main} main: actual delegate branch 
   assert.equal(JSON.parse(await readFile(path.join(s.dataDir,'runs.json'),'utf8'))[0].status,'completed');
   const exported=await fetch(s.url+`/api/runs/${run.id}/export`).then(x=>x.text());assert.match(exported,/reply-5/);
 });
-for(const main of ['codex','claude','gemini'])test(`${main} combines both peers with separate models and roles, and followups stay main-only unless requested`,async t=>{
-  const peers=['codex','claude','gemini'].filter(p=>p!==main),calls=[];
+for(const main of ['codex','claude','antigravity'])test(`${main} combines both peers with separate models and roles, and followups stay main-only unless requested`,async t=>{
+  const peers=['codex','claude','antigravity'].filter(p=>p!==main),calls=[];
   const models=Object.fromEntries([main,...peers].map(p=>[p,p+'-model']));
-  const peerSettings=Object.fromEntries(peers.map(p=>[p,{role:p+' unique review',agentRoles:p==='gemini'?[]:[{name:p+' helper',task:'public review'}]}]));
+  const peerSettings=Object.fromEntries(peers.map(p=>[p,{role:p+' unique review',agentRoles:p==='antigravity'?[]:[{name:p+' helper',task:'public review'}]}]));
   const s=await setup(t,async(p,opts)=>{
     calls.push({p,...opts});
     for(let i=0;i<opts.roles.length;i++)opts.onEvent({kind:'agent',id:'same-id',name:'helper_'+(i+1),status:'completed',text:p+' findings'});
@@ -157,15 +157,15 @@ for(const main of ['codex','claude','gemini'])test(`${main} combines both peers 
   assert.ok(calls.slice(count).every(c=>c.roles.length===0));
 });
 test('peer lists reject main, duplicate and invalid providers; all selected peers must be connected',async t=>{
-  for(const peers of [null,'claude',['codex'],['claude','claude'],['claude','gemini','codex'],['invalid']])assert.throws(()=>validatePeers('codex',peers));
-  assert.throws(()=>validateRun({main:'codex',peers:['claude','gemini'],prompt:'public',peerSettings:{gemini:{role:'review',agentRoles:[{name:'a',task:'b'}]}}}));
-  let calls=0;const s=await setup(t,async()=>{calls++;return {text:'unused'};},async p=>({...await ready(),loggedIn:p!=='gemini'}));
-  assert.equal((await s.post('/api/runs',{main:'codex',peers:['claude','gemini'],prompt:'public'})).status,409);assert.equal(calls,0);
+  for(const peers of [null,'claude',['codex'],['claude','claude'],['claude','antigravity','codex'],['invalid']])assert.throws(()=>validatePeers('codex',peers));
+  assert.throws(()=>validateRun({main:'codex',peers:['claude','antigravity'],prompt:'public',peerSettings:{antigravity:{role:'review',agentRoles:[{name:'a',task:'b'}]}}}));
+  let calls=0;const s=await setup(t,async()=>{calls++;return {text:'unused'};},async p=>({...await ready(),loggedIn:p!=='antigravity'}));
+  assert.equal((await s.post('/api/runs',{main:'codex',peers:['claude','antigravity'],prompt:'public'})).status,409);assert.equal(calls,0);
 });
 test('a failing second peer preserves the first review without fabricating a combined final answer',async t=>{
-  const calls=[];const s=await setup(t,async p=>{calls.push(p);if(p==='gemini')throw Error('public failure');return {text:p+' response',agentCount:0};});
-  await s.post('/api/runs',{main:'codex',peers:['claude','gemini'],prompt:'public'});
-  const run=await wait(s.get,'failed');assert.deepEqual(calls,['codex','claude','gemini']);assert.equal(run.final,'');assert.equal(run.roundsCompleted,0);assert.ok(run.messages.some(m=>m.provider==='claude'&&m.text==='claude response'));
+  const calls=[];const s=await setup(t,async p=>{calls.push(p);if(p==='antigravity')throw Error('public failure');return {text:p+' response',agentCount:0};});
+  await s.post('/api/runs',{main:'codex',peers:['claude','antigravity'],prompt:'public'});
+  const run=await wait(s.get,'failed');assert.deepEqual(calls,['codex','claude','antigravity']);assert.equal(run.final,'');assert.equal(run.roundsCompleted,0);assert.ok(run.messages.some(m=>m.provider==='claude'&&m.text==='claude response'));
 });
 test('unobserved native subagents fail instead of roleplaying completion',async t=>{
   const s=await setup(t,async()=>({text:'I used agents',agentCount:0}));
@@ -338,7 +338,7 @@ test('long followup history is summarized by the main AI while original messages
   assert.ok(run.messages.some(m=>m.text.startsWith('원문1')&&m.text.length>24000));
   assert.equal(run.final,'후속 답변');
 });
-for(const main of ['codex','claude','gemini'])test(`${main} alone can start, follow up and create files with other providers disconnected`,async t=>{
+for(const main of ['codex','claude','antigravity'])test(`${main} alone can start, follow up and create files with other providers disconnected`,async t=>{
   const calls=[];
   const s=await setup(t,async(p,opts)=>{
     calls.push(p);
@@ -350,11 +350,11 @@ for(const main of ['codex','claude','gemini'])test(`${main} alone can start, fol
   await s.post(`/api/runs/${id}/messages`,{message:'Markdown 파일로 만들어줘'});run=await wait(s.get,'completed');assert.equal(run.files.length,1);
   assert.deepEqual(calls,[main,main,main]);
   assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'왕복해'})).status,400);
-  const peer=main==='codex'?'gemini':'codex';
+  const peer=main==='codex'?'antigravity':'codex';
   assert.equal((await s.post('/api/runs',{main,peer,prompt:'public'})).status,409);
   assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'왕복해',peer})).status,409);
 });
-for(const [main,peer] of [['codex','gemini'],['gemini','claude'],['claude','gemini']])test(`${main} can choose ${peer} while the third provider is offline`,async t=>{
+for(const [main,peer] of [['codex','antigravity'],['antigravity','claude'],['claude','antigravity']])test(`${main} can choose ${peer} while the third provider is offline`,async t=>{
   const calls=[];const s=await setup(t,async p=>{calls.push(p);return {text:'answer',agentCount:0};},async p=>({...await ready(),loggedIn:[main,peer].includes(p)}));
   await s.post('/api/runs',{main,peer,prompt:'public',rounds:1});await wait(s.get,'completed');assert.deepEqual(calls,[main,peer,main]);
 });
@@ -363,7 +363,7 @@ test('Gemini streaming separates user input from answer, combines deltas and rej
   for(const event of [{type:'init',model:'gemini-test',session_id:'owned-session'},{type:'message',role:'user',content:'do not display'},{type:'message',role:'assistant',content:'첫 ',delta:true},{type:'message',role:'assistant',content:'답변',delta:true},{type:'result',status:'success'}])parseEvent('gemini',event,emit,state);
   assert.equal(state.text,'첫 답변');assert.equal(state.model,'gemini-test');assert.equal(state.completed,true);assert.equal(events.length,2);
   parseEvent('gemini',{type:'result',status:'error'},emit,state);assert.match(state.error,/Gemini/);
-  assert.throws(()=>validateRun({main:'gemini',prompt:'x',agentRoles:[{name:'x',task:'y'}]}),/내부 에이전트/);
+  assert.throws(()=>validateRun({main:'antigravity',prompt:'x',agentRoles:[{name:'x',task:'y'}]}),/내부 에이전트/);
   assert.throws(()=>validateRun({main:'codex',peer:'codex',prompt:'x'}),/다른 AI/);
 });
 test('Gemini CLI adapter handles a real child stream, isolated settings and cancellation without a Google request',async t=>{

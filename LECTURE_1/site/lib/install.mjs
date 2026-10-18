@@ -4,10 +4,12 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {capture,nodeExecutable} from './providers.mjs';
 import {pythonExecutable} from './python.mjs';
+import {installAntigravity} from './antigravity.mjs';
 
 export const packages={codex:'@openai/codex@0.163.0',claude:'@anthropic-ai/claude-code@2.1.302',gemini:'@google/gemini-cli@0.64.0'};
 const keys={codex:'DIALOGUE_CODEX_EXE',claude:'DIALOGUE_CLAUDE_EXE',gemini:'DIALOGUE_GEMINI_SCRIPT'};
 export function localToolPaths(dataDir,provider,platform=process.platform,arch=process.arch){
+  if(provider==='antigravity')return [path.join(dataDir,'cli','antigravity',platform==='win32'?'agy.exe':'agy')];
   if(!Object.hasOwn(packages,provider))throw Error('설치할 AI를 선택하세요.');
   const modules=path.join(dataDir,'cli',provider,'node_modules'),suffix=platform==='win32'?'.exe':'';
   if(provider==='gemini')return ['bundle/gemini.js','dist/index.js'].map(entry=>path.join(modules,'@google/gemini-cli',entry));
@@ -17,6 +19,7 @@ export function localToolPaths(dataDir,provider,platform=process.platform,arch=p
   return [path.join(modules,scope,`${pkg}-${platform}-${arch}`,...tail),path.join(modules,scope,pkg,'node_modules',scope,`${pkg}-${platform}-${arch}`,...tail),path.join(modules,scope,pkg,'bin',provider+suffix)];
 }
 export function adoptLocalTools(dataDir,env=process.env){
+  const agy=path.join(dataDir,'cli','antigravity',process.platform==='win32'?'agy.exe':'agy');if(existsSync(agy))env.DIALOGUE_ANTIGRAVITY_EXE=agy;
   for(const provider of Object.keys(packages)){
     const file=localToolPaths(dataDir,provider).find(existsSync);
     if(file)env[keys[provider]]=file;
@@ -30,6 +33,9 @@ export function npmEntrypoint(env=process.env,node=process.execPath){
   return file;
 }
 export async function installTool(dataDir,provider){
+  if(provider==='antigravity'){
+    const exe=await installAntigravity(dataDir);const result=await capture(exe,['--version']);if(result.code!==0)throw Error('Antigravity 실행 확인 실패');return '공식 Antigravity CLI 설치·SHA512 검증 완료';
+  }
   if(provider==='documents'){
     const python=pythonExecutable();
     try{const result=await capture(python,['--version'],{timeout:15000});if(result.code!==0)throw Error();}

@@ -7,7 +7,7 @@ import {createService} from '../server.mjs';
 import {beginLogin,logoutCLI,geminiHasLogin} from '../lib/providers.mjs';
 
 const testRoot=fileURLToPath(new URL('../../tmp/auth-tests/',import.meta.url));
-async function service(t,{loggedIn=false,logoutError=false,provider='gemini'}={}){
+async function service(t,{loggedIn=false,logoutError=false,provider='antigravity'}={}){
   await mkdir(testRoot,{recursive:true});
   let done,stopped=0,logoutCalls=0;
   const app=await createService({
@@ -26,39 +26,39 @@ async function service(t,{loggedIn=false,logoutError=false,provider='gemini'}={}
 }
 test('login completes without terminal close; cancellation ignores late callbacks and allows retry',async t=>{
   const s=await service(t);
-  assert.equal((await s.post('/api/login',{provider:'gemini'})).status,202);
-  assert.equal((await s.state()).connections.gemini.loginRunning,true);
+  assert.equal((await s.post('/api/login',{provider:'antigravity'})).status,202);
+  assert.equal((await s.state()).connections.antigravity.loginRunning,true);
   assert.equal((await s.post('/api/runs',{main:'codex',prompt:'test'})).status,409);
-  assert.equal((await s.post('/api/login/cancel',{provider:'gemini'})).status,200);
+  assert.equal((await s.post('/api/login/cancel',{provider:'antigravity'})).status,200);
   await s.finish(false);
-  let c=(await s.state()).connections.gemini;
+  let c=(await s.state()).connections.antigravity;
   assert.equal(c.loginRunning,false);assert.equal(c.loginUrl,undefined);assert.match(c.message,/취소/);
   assert.equal(s.counts().stopped,1);
-  await s.post('/api/login',{provider:'gemini'});await s.finish(true);
-  c=(await s.state()).connections.gemini;
+  await s.post('/api/login',{provider:'antigravity'});await s.finish(true);
+  c=(await s.state()).connections.antigravity;
   assert.equal(c.loggedIn,true);assert.equal(c.loginRunning,false);assert.equal(c.loginUrl,undefined);
 });
 test('logout updates the real check result, protects token boundary and preserves history',async t=>{
   const s=await service(t,{loggedIn:true});
-  assert.equal((await s.post('/api/logout',{provider:'gemini'},'wrong')).status,403);
+  assert.equal((await s.post('/api/logout',{provider:'antigravity'},'wrong')).status,403);
   assert.equal((await s.post('/api/logout',{provider:'unknown'})).status,400);
   assert.equal(s.counts().logoutCalls,0);
-  assert.equal((await s.post('/api/logout',{provider:'gemini'})).status,200);
-  assert.equal((await s.state()).connections.gemini.loggedIn,false);
+  assert.equal((await s.post('/api/logout',{provider:'antigravity'})).status,200);
+  assert.equal((await s.state()).connections.antigravity.loggedIn,false);
   assert.deepEqual(s.app.runs,[]);assert.equal(s.counts().logoutCalls,1);
-  assert.equal((await s.post('/api/login',{provider:'gemini'})).status,202);
+  assert.equal((await s.post('/api/login',{provider:'antigravity'})).status,202);
 });
 test('logout failure stays connected and reports an error instead of success',async t=>{
   const s=await service(t,{loggedIn:true,logoutError:true});
-  const response=await s.post('/api/logout',{provider:'gemini'});
+  const response=await s.post('/api/logout',{provider:'antigravity'});
   assert.equal(response.status,400);assert.match((await response.json()).error,/실패/);
-  const c=(await s.state()).connections.gemini;
+  const c=(await s.state()).connections.antigravity;
   assert.equal(c.loggedIn,true);assert.equal(c.logoutRunning,false);
 });
 test('account changes are rejected while a model job is active',async t=>{
   const s=await service(t,{loggedIn:true});
-  assert.equal((await s.post('/api/runs',{main:'gemini',prompt:'test'})).status,202);
-  assert.equal((await s.post('/api/logout',{provider:'gemini'})).status,409);
+  assert.equal((await s.post('/api/runs',{main:'antigravity',prompt:'test'})).status,202);
+  assert.equal((await s.post('/api/logout',{provider:'antigravity'})).status,409);
   assert.equal((await s.post('/api/login',{provider:'codex'})).status,409);
   assert.equal(s.counts().logoutCalls,0);
 });

@@ -10,7 +10,7 @@ import {createBridge,WEB_ORIGIN} from './lib/bridge.mjs';
 import {diagnose,diagnosticText} from './lib/diagnostics.mjs';
 
 const ROOT=fileURLToPath(new URL('.',import.meta.url));
-const providers=['codex','claude','gemini'];
+const providers=['codex','claude','antigravity'];
 export const peerFor=run=>Array.isArray(run.peers)?run.peers[0]||null:run.peer===undefined?(run.main==='codex'?'claude':'codex'):run.peer;
 export const peersFor=run=>Array.isArray(run.peers)?run.peers:[peerFor(run)].filter(Boolean);
 const mainDefault='사용자 목표와 자료를 바탕으로 초안을 만들고 상대 의견의 수용·반박·보류 이유와 최종 판단을 정리한다.';
@@ -37,7 +37,7 @@ export function validateRun(input){
   const {main,peer:legacyPeer=null,prompt,rounds=1,stopCondition='사용자 요구가 충족되고 새로 검토할 중요한 쟁점이 없으면 종료',agentRoles=[],peerAgentRoles=[],mainRole=mainDefault,peerRole=peerDefault,models={}}=input;
   if(!providers.includes(main))throw fail(400,'메인 AI를 선택하세요.');
   const peers=validatePeers(main,input.peers===undefined?(legacyPeer===null?[]:[legacyPeer]):input.peers),peer=peers[0]||null;
-  if(main==='gemini'&&Array.isArray(agentRoles)&&agentRoles.length)throw fail(400,'Gemini 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
+  if(main==='antigravity'&&Array.isArray(agentRoles)&&agentRoles.length)throw fail(400,'Antigravity 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
   if(typeof prompt!=='string'||!prompt.trim()||prompt.length>20000)throw fail(400,'작업 지시는 1~20,000자로 입력하세요.');
   if(rounds!==null&&(!Number.isSafeInteger(rounds)||rounds<1))throw fail(400,'왕복 횟수는 1 이상의 정수 또는 제한 없음입니다.');
   if(typeof stopCondition!=='string'||stopCondition.length>3000)throw fail(400,'종료 조건은 3,000자 이하로 작성하세요.');
@@ -57,7 +57,7 @@ export function validateRun(input){
     if(item!==undefined&&(!item||typeof item!=='object'||Array.isArray(item)))throw fail(400,'상대 역할 설정을 확인하세요.');
     const role=item?.role??peerRole,items=rolesFor(item?.agentRoles??(p===peer?peerAgentRoles:[]));
     if(typeof role!=='string'||!role.trim()||role.length>3000)throw fail(400,'상대 역할은 1~3,000자로 작성하세요.');
-    if(p==='gemini'&&items.length)throw fail(400,'Gemini 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
+    if(p==='antigravity'&&items.length)throw fail(400,'Antigravity 내부 에이전트는 현재 지원하지 않습니다. 역할을 0개로 설정하세요.');
     peerSettings[p]={role:role.trim(),agentRoles:items};
   }
   const selected={};
@@ -257,7 +257,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.9.0',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.10.0',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
       if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,canShutdown:!remote&&typeof onShutdown==='function',canInstall:!remote&&typeof installer==='function',installing,installations,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       const taskRead=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{36})$/);
       if(req.method==='GET'&&taskRead){
@@ -391,6 +391,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           if(loginStops.size||logoutRunning)throw fail(409,'로그인·로그아웃 처리를 마친 뒤 이어가세요.');
           if(active)throw fail(409,'진행 중인 작업을 마치거나 중지하세요.');
           const run=runs.find(r=>r.id===followup[1]);if(!run)throw fail(404,'작업을 찾지 못했습니다.');
+          if(run.main==='gemini'||peersFor(run).includes('gemini'))throw fail(409,'이전 Gemini 기록입니다. 보존된 내용을 참고해 Antigravity를 선택한 새 작업으로 진행하세요.');
           if(run.mode==='codex-host')throw fail(409,'이 작업은 지시한 Codex 채팅에서 이어가세요.');
           if(typeof body.message!=='string'||!body.message.trim()||body.message.length>20000)throw fail(400,'추가 지시는 1~20,000자로 입력하세요.');
           const discuss=dialogueRequested(body.message);
@@ -402,7 +403,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
             if(peers.some(p=>!connections[p].loggedIn))throw fail(409,'선택한 모든 상대 AI의 로그인을 확인하세요.');
             requestedRounds(body.message,run.rounds);
           }
-          const config=body.peerSettings??Object.fromEntries(peers.map(p=>[p,run.peerSettings?.[p]||{role:run.peerRole||peerDefault,agentRoles:p===peerFor(run)&&p!=='gemini'?run.peerAgentRoles||[]:[]} ]));
+          const config=body.peerSettings??Object.fromEntries(peers.map(p=>[p,run.peerSettings?.[p]||{role:run.peerRole||peerDefault,agentRoles:p===peerFor(run)&&p!=='antigravity'?run.peerAgentRoles||[]:[]} ]));
           const peerSettings=discuss?validateRun({...run,peers,peerSettings:config}).peerSettings:run.peerSettings;
           uploads.select(body.attachmentIds||[]);
           const files=uploads.select([...new Set([...(run.attachmentIds||[]),...(body.attachmentIds||[])])]);

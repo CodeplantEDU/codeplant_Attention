@@ -1,5 +1,9 @@
 # CODEPLANT ATTENTION
 
+**공개 사이트: [codeplant-attention.vercel.app](https://codeplant-attention.vercel.app/)**
+
+각자 PC에서 아래 설치를 마친 뒤 로컬 화면의 **공개 웹사이트 연결 관리 → 웹 연결 코드 발급**을 사용합니다. 공개 사이트에 코드를 입력하면 본인의 Codex·Claude·Gemini 계정으로 사용할 수 있습니다. AI 로그인과 자료·대화·생성 파일은 각자의 PC에서 처리합니다. [PC 연결 사용법](LECTURE_1/site/README.md#vercel-공개-화면--본인-pc-연결)
+
 Codex·Claude Code·Gemini를 선택해 대화하고, 자료를 올리고, 대화로 결과 파일을 만드는 Windows 로컬 프로그램입니다. **AI 하나만 연결해도 사용할 수 있습니다.** 다른 AI와 검토하려면 상대를 추가로 선택합니다.
 
 <a id="codex-install"></a>

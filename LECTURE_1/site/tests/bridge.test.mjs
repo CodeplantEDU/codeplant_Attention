@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import {createBridge,WEB_ORIGIN} from '../lib/bridge.mjs';
+import {createService} from '../server.mjs';
+
+test('pairing codes are single-use, expire, bound to an exact origin and cannot transfer to another PC',()=>{
+  let time=0;const a=createBridge({now:()=>time}),b=createBridge({now:()=>time});
+  const invite=a.issue();
+  assert.throws(()=>a.connect('https://evil.example',invite.code));
+  assert.throws(()=>a.connect(WEB_ORIGIN,'가'.repeat(48)));
+  const {token}=a.connect(WEB_ORIGIN,invite.code);
+  assert.equal(a.valid(WEB_ORIGIN,token),true);assert.equal(b.valid(WEB_ORIGIN,token),false);
+  assert.equal(a.valid('https://evil.example',token),false);
+  assert.throws(()=>a.connect(WEB_ORIGIN,invite.code));
+  const next=a.issue();time=300001;assert.throws(()=>a.connect(WEB_ORIGIN,next.code));
+  time=43200001;assert.equal(a.valid(WEB_ORIGIN,token),false);
+});
+test('disconnect and revoke invalidate browser tokens; repeated guesses invalidate an invitation',()=>{
+  const a=createBridge();let invite=a.issue();
+  for(let i=0;i<5;i++)assert.throws(()=>a.connect(WEB_ORIGIN,'wrong'));
+  assert.throws(()=>a.connect(WEB_ORIGIN,invite.code));
+  invite=a.issue();const {token}=a.connect(WEB_ORIGIN,invite.code);a.disconnect(token);assert.equal(a.valid(WEB_ORIGIN,token),false);
+  const other=a.connect(WEB_ORIGIN,a.issue().code).token;a.revoke();assert.equal(a.valid(WEB_ORIGIN,other),false);
+});
+test('HTTP bridge requires local approval, protects all remote data and preserves local-only controls',async t=>{
+  const root=fileURLToPath(new URL('../../tmp/bridge-tests/',import.meta.url));await mkdir(root,{recursive:true});
+  const app=await createService({dataDir:await mkdtemp(path.join(root,'case-')),check:async()=>({installed:true,loggedIn:true}),cli:async()=>({text:'public mock reply',agentCount:0})});
+  await new Promise(r=>app.server.listen(0,'127.0.0.1',r));t.after(()=>app.close());await app.refresh();
+  const base=`http://127.0.0.1:${app.server.address().port}`;
+  const initial=await(await fetch(base+'/api/state')).json();const master=initial.token;
+  const call=(route,{origin,token,body,method}={})=>fetch(base+route,{method:method||(body===undefined?'GET':'POST'),headers:{...(origin?{Origin:origin}:{}),...(token?{'X-Local-Token':token}:{}),...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  assert.equal((await call('/api/state',{origin:WEB_ORIGIN})).status,403);
+  assert.equal((await call('/api/state',{origin:WEB_ORIGIN,token:master})).status,403);
+  assert.equal((await call('/api/bridge/code',{body:{}})).status,403);
+  const preflight=await call('/api/state',{origin:WEB_ORIGIN,method:'OPTIONS'});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-origin'),WEB_ORIGIN);
+  const invite=await(await call('/api/bridge/code',{token:master,body:{}})).json();
+  const response=await call('/api/bridge/connect',{origin:WEB_ORIGIN,body:{code:invite.code}});assert.equal(response.status,200);const {token}=await response.json();assert.notEqual(token,master);
+  assert.equal((await call('/api/bridge/connect',{origin:WEB_ORIGIN,body:{code:invite.code}})).status,403);
+  const state=await(await call('/api/state',{origin:WEB_ORIGIN,token})).json();assert.equal(state.token,token);assert.notEqual(state.token,master);
+  for(const route of ['/api/bridge/code','/api/bridge/revoke'])assert.equal((await call(route,{origin:WEB_ORIGIN,token,body:{}})).status,403);
+  assert.equal((await call('/api/state',{origin:'https://evil.example',token})).status,403);
+  const runResponse=await call('/api/runs',{origin:WEB_ORIGIN,token,body:{main:'codex',prompt:'public mock'}});assert.equal(runResponse.status,202);const {id}=await runResponse.json();
+  assert.equal((await call(`/api/runs/${id}/export`,{origin:WEB_ORIGIN})).status,403);
+  assert.equal((await call(`/api/runs/${id}/export`,{origin:WEB_ORIGIN,token})).status,200);
+  await call('/api/bridge/disconnect',{origin:WEB_ORIGIN,token,body:{}});
+  assert.equal((await call('/api/state',{origin:WEB_ORIGIN,token})).status,403);
+  assert.equal((await call('/api/state')).status,200);
+});

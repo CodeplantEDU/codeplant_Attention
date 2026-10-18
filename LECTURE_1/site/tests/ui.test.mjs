@@ -89,7 +89,7 @@ test('busy uploads reject the drag effect and leaving or ending a drag clears it
 });
 
 function helperContext(extra = {}) {
-  const context = vm.createContext(extra);
+  const context = vm.createContext({location:{hostname:'127.0.0.1'},...extra});
   const end = source.indexOf("$('#add-role').addEventListener");
   assert.ok(end > 0);
   vm.runInContext(source.slice(0, end), context);

@@ -3,6 +3,10 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const providerNames = { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini' };
 const providers = Object.keys(providerNames);
+const cloudMode = !['127.0.0.1', 'localhost'].includes(location.hostname);
+const apiBase = cloudMode ? 'http://127.0.0.1:49321' : '';
+let bridgeToken = '';
+try { if (cloudMode) bridgeToken = sessionStorage.getItem('attention-bridge-token') || ''; } catch {}
 let mainChosen = false;
 const statusNames = { running: '진행 중', completed: '완료', failed: '실패', stopped: '중지됨', interrupted: '중단됨', pending: '대기', queued: '대기', waiting: '대기', starting: '시작 중' };
 let currentState = null;
@@ -218,12 +222,18 @@ function notice(message, success = false) {
 }
 
 async function request(path, body) {
+  if (cloudMode && !bridgeToken) throw new Error('먼저 내 PC를 연결하세요.');
   const options = body === undefined ? {} : {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Local-Token': currentState?.token || '' },
     body: JSON.stringify(body)
   };
-  const response = await fetch(path, options);
+  if (cloudMode) options.headers = { ...options.headers, 'X-Local-Token': bridgeToken };
+  const response = await fetch(apiBase + path, { ...options, targetAddressSpace: 'local' });
+  if (cloudMode && response.status === 403) {
+    sessionStorage.removeItem('attention-bridge-token');location.reload();
+    throw new Error('PC 연결이 만료됐습니다. 다시 연결하세요.');
+  }
   const contentType = response.headers.get('content-type') || '';
   const data = contentType.includes('application/json') ? await response.json() : {};
   if (!response.ok) throw new Error(data.error || data.message || `요청을 처리하지 못했습니다. (${response.status})`);
@@ -677,6 +687,7 @@ async function refresh() {
 }
 
 async function poll() {
+  if (cloudMode && !bridgeToken) return;
   try {
     await refresh();
     if (disconnected) notice('');
@@ -817,6 +828,52 @@ document.querySelectorAll('[data-logout]').forEach(button => button.addEventList
   await request('/api/logout', { provider: button.dataset.logout });
   notice(`${providerNames[button.dataset.logout]}에서 로그아웃했습니다. 로그인 버튼으로 계정을 다시 연결할 수 있습니다.`, true);
 })));
+
+$('#bridge-panel').open = cloudMode;
+$('#bridge-local').hidden = cloudMode;
+$('#bridge-cloud').hidden = !cloudMode;
+if (cloudMode) {
+  setText($('#bridge-heading'), '내 PC의 AI 연결');
+  setText($('.local-label'), bridgeToken ? '내 PC에 연결됨' : '내 PC 연결 필요');
+  $('#bridge-disconnect').hidden = !bridgeToken;
+  for (const card of document.querySelectorAll('.connection-card')) {
+    setText($('.connection-badge', card), 'PC 연결 필요');
+    setText($('.connection-message', card), '내 PC를 연결하면 본인의 AI 로그인 상태가 표시됩니다.');
+  }
+}
+$('#bridge-issue').addEventListener('click', () => action(async () => {
+  const result = await request('/api/bridge/code', {});
+  const field = $('#bridge-issued-code');field.hidden = false;field.value = result.code;field.focus();field.select();
+  setText($('#bridge-status'), `${result.origin}에 입력하세요. 코드는 5분간 한 번만 사용할 수 있습니다.`);
+}));
+$('#bridge-revoke').addEventListener('click', () => action(async () => {
+  await request('/api/bridge/revoke', {});$('#bridge-issued-code').value = '';$('#bridge-issued-code').hidden = true;
+  setText($('#bridge-status'), '모든 웹 연결을 해제했습니다. 로컬 프로그램은 계속 사용할 수 있습니다.');
+}));
+$('#bridge-connect').addEventListener('click', async () => {
+  const button = $('#bridge-connect');button.disabled = true;
+  setText($('#bridge-status'), '이 PC의 연결 프로그램에 접속합니다…');
+  try {
+    const response = await fetch(apiBase + '/api/bridge/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#bridge-code').value.trim() }), targetAddressSpace: 'local' });
+    const data = await response.json();if (!response.ok) throw new Error(data.error || '연결 코드를 확인하세요.');
+    sessionStorage.setItem('attention-bridge-token', data.token);bridgeToken = data.token;$('#bridge-code').value = '';
+    $('#bridge-disconnect').hidden = false;setText($('#bridge-status'), '내 PC에 연결했습니다. 오른쪽에서 본인의 AI 계정을 로그인하세요.');
+    setText($('.local-label'), '내 PC에 연결됨');await poll();
+  } catch (error) { setText($('#bridge-status'), error instanceof TypeError ? '연결 프로그램 실행과 브라우저의 로컬 네트워크 접근 허용을 확인하세요.' : error.message); }
+  finally { button.disabled = false; }
+});
+$('#bridge-disconnect').addEventListener('click', async () => { try { await request('/api/bridge/disconnect', {}); } finally { sessionStorage.removeItem('attention-bridge-token');location.reload(); } });
+document.addEventListener('click', async event => {
+  const link = event.target.closest('a');
+  if (!cloudMode || !link || !/^\/api\/runs\/[a-f0-9-]{36}\/(?:export|files\/[a-f0-9-]{36})$/.test(link.getAttribute('href') || '')) return;
+  event.preventDefault();
+  try {
+    if (!bridgeToken) throw new Error('내 PC를 먼저 연결하세요.');
+    const response = await fetch(apiBase + link.getAttribute('href'), { headers: { 'X-Local-Token': bridgeToken }, targetAddressSpace: 'local' });
+    if (!response.ok) throw new Error('다운로드 연결이 만료됐습니다. PC를 다시 연결하세요.');
+    const url = URL.createObjectURL(await response.blob());const download = node('a');download.href = url;download.download = link.download || 'AI_대화기록.md';download.click();setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { notice(error.message); }
+});
 
 connectRoleEditor('main', mainRolePresets);
 connectRoleEditor('peer', peerRolePresets);

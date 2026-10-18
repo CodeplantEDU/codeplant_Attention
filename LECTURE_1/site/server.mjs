@@ -6,6 +6,7 @@ import {randomUUID,randomBytes,timingSafeEqual} from 'node:crypto';
 import {connection,runCLI,beginLogin,logoutCLI} from './lib/providers.mjs';
 import {openUploads} from './lib/uploads.mjs';
 import {requestedFormats,fileInstructions,parseFilePackage,createFiles,readGenerated} from './lib/files.mjs';
+import {createBridge,WEB_ORIGIN} from './lib/bridge.mjs';
 
 const ROOT=fileURLToPath(new URL('.',import.meta.url));
 const providers=['codex','claude','gemini'];
@@ -55,7 +56,7 @@ function renderExport(run){
     `\n## 최종 답변\n\n${run.final||'완료된 최종 답변이 없습니다.'}\n`;
 }
 
-export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI}={}){
+export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI,webOrigin=process.env.DIALOGUE_WEB_ORIGIN||WEB_ORIGIN}={}){
   await mkdir(dataDir,{recursive:true});
   const uploads=await openUploads(dataDir);
   const stateFile=path.join(dataDir,'runs.json');let runs=[];
@@ -67,6 +68,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   const token=randomBytes(32).toString('hex');let active=null,writing=Promise.resolve(),saveTimer=null,closed=false;
   let connections=Object.fromEntries(providers.map(p=>[p,{installed:false,loggedIn:false,message:'확인 중',version:'',loginRunning:false}]));
   const loginStops=new Map();
+  const bridge=createBridge({origin:webOrigin});
   const authMessages=new Map();
   let logoutRunning=false;
   function save(){
@@ -199,17 +201,38 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       const host=req.headers.host,actual=`127.0.0.1:${server.address()?.port}`;
       if(host!==actual&&host!==`localhost:${server.address()?.port}`)throw fail(403,'이 컴퓨터의 주소로 접속하세요.');
       const origin=req.headers.origin;
-      if(origin&&origin!==`http://${host}`)throw fail(403,'다른 사이트의 요청을 허용하지 않습니다.');
+      const remote=Boolean(origin&&origin!==`http://${host}`);
+      const url=new URL(req.url,`http://${host}`);
+      if(remote){
+        if(origin!==bridge.origin||!url.pathname.startsWith('/api/'))throw fail(403,'허용하지 않은 웹사이트입니다.');
+        res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');
+        if(req.method==='OPTIONS'){
+          res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers','Content-Type, X-Local-Token');
+          if(req.headers['access-control-request-private-network']==='true')res.setHeader('Access-Control-Allow-Private-Network','true');
+          res.writeHead(204);res.end();return;
+        }
+        if(url.pathname==='/api/bridge/connect'&&req.method==='POST'){
+          const body=await jsonBody(req);
+          try{return json(200,bridge.connect(origin,body.code));}catch(e){throw fail(403,e.message);}
+        }
+        if(!bridge.valid(origin,req.headers['x-local-token']))throw fail(403,'이 PC의 연결 승인이 필요합니다. 새 연결 코드를 입력하세요.');
+      }
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      const url=new URL(req.url,`http://${host}`);
       if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.5.0'});
-      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
+      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];
-        if(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token)))throw fail(403,'화면을 새로고침한 뒤 다시 실행하세요.');
+        if(!remote&&(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token))))throw fail(403,'화면을 새로고침한 뒤 다시 실행하세요.');
         const body=await jsonBody(req);
+        if(remote&&url.pathname==='/api/bridge/disconnect'){bridge.disconnect(supplied);return json(200,{ok:true});}
+        if(url.pathname==='/api/bridge/code'||url.pathname==='/api/bridge/revoke'){
+          if(remote)throw fail(403,'PC의 로컬 화면에서만 연결을 관리할 수 있습니다.');
+          if(url.pathname.endsWith('/code'))return json(200,bridge.issue());
+          bridge.revoke();return json(200,{ok:true});
+        }
         if(url.pathname==='/api/uploads')return json(201,await uploads.add(body));
         if(url.pathname==='/api/connections/check'){await refresh();return json(200,{ok:true});}
         if(url.pathname==='/api/login'){

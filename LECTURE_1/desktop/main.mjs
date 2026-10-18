@@ -1,0 +1,88 @@
+import {app,BrowserWindow,Menu,ipcMain,shell,dialog} from 'electron';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {mkdir} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {runtimePaths,installedProviders,installProvider,backendEnvironment} from './runtime.mjs';
+
+const here=path.dirname(fileURLToPath(import.meta.url));
+const resources=app.isPackaged?process.resourcesPath:here;
+const smoke=process.argv.includes('--smoke-test');
+if(smoke){const folder=process.env.ATTENTION_SMOKE_DIR;if(!folder)throw Error('ATTENTION_SMOKE_DIR required');app.setPath('userData',folder);}
+let window,setup,worker,quitting=false,installing=false,usingExisting=false,stoppingWorker=false;
+const local='http://127.0.0.1:49321';
+function external(url){try{if(new URL(url).protocol==='https:')shell.openExternal(url);}catch{}}
+function secureWindow(options){
+  const win=new BrowserWindow({...options,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,...options.webPreferences}});
+  win.webContents.setWindowOpenHandler(({url})=>{external(url);return {action:'deny'};});
+  win.webContents.on('will-navigate',(event,url)=>{if(url!==win.webContents.getURL()&&!url.startsWith(local+'/')){event.preventDefault();external(url);}});
+  return win;
+}
+async function showSetup(){
+  if(setup){setup.show();return;}
+  setup=secureWindow({width:660,height:650,resizable:true,title:'AI 연결 준비 · CODEPLANT',webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,preload:path.join(here,'preload.cjs')}});
+  setup.on('closed',()=>{setup=null;});await setup.loadFile(path.join(here,'setup.html'));
+}
+function trusted(event){if(!setup||event.sender!==setup.webContents||event.senderFrame.url!==new URL('setup.html',import.meta.url).href)throw Error('허용되지 않은 요청입니다.');}
+ipcMain.handle('attention:status',event=>{trusted(event);return {installed:installedProviders(app.getPath('userData')),usingExisting};});
+ipcMain.handle('attention:install',async(event,providers)=>{
+  trusted(event);if(installing)throw Error('준비 중입니다. 잠시 기다려 주세요.');
+  if(!Array.isArray(providers)||!providers.length||providers.length>3||providers.some(p=>!['codex','claude','gemini'].includes(p))||new Set(providers).size!==providers.length)throw Error('사용할 AI를 선택하세요.');
+  if(usingExisting)throw Error('기존 연결 프로그램을 종료하고 이 앱을 다시 실행해 AI를 추가해 주세요.');
+  if(worker){
+    const state=await fetch(local+'/api/state').then(r=>r.json());
+    if(state.activeRunId||Object.values(state.connections).some(c=>c.loginRunning||c.logoutRunning))throw Error('진행 중인 대화 또는 로그인을 마친 뒤 AI를 추가하세요.');
+    stoppingWorker=true;const child=worker;
+    await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('대화 서버 종료를 기다리고 있습니다. 다시 시도하세요.')),10000);child.once('exit',()=>{clearTimeout(timer);resolve();});child.send('close');});
+    stoppingWorker=false;
+  }
+  installing=true;try{
+    for(const provider of providers){setup?.webContents.send('attention:progress',`${provider} 공식 실행 도구를 준비하고 있습니다. 처음에는 몇 분 걸릴 수 있습니다.`);await installProvider(resources,app.getPath('userData'),provider);}
+    return {installed:installedProviders(app.getPath('userData'))};
+  }finally{installing=false;}
+});
+ipcMain.handle('attention:open',async event=>{trusted(event);if(installing)throw Error('준비가 끝날 때까지 기다려 주세요.');if(!usingExisting&&!installedProviders(app.getPath('userData')).length)throw Error('AI를 하나 이상 준비해 주세요.');await openStudio();setup?.close();});
+
+async function existing(){try{const response=await fetch(local+'/api/state',{signal:AbortSignal.timeout(1500)});const state=await response.json();return response.ok&&state.connections&&Array.isArray(state.runs);}catch{return false;}}
+async function startBackend(){
+  if(worker||usingExisting)return;
+  if(await existing()){usingExisting=true;return;}
+  const base=app.getPath('userData'),dataDir=path.join(base,'data');await mkdir(dataDir,{recursive:true});
+  await new Promise((resolve,reject)=>{
+    worker=spawn(runtimePaths(resources).node,[path.join(resources,'worker.mjs'),resources,dataDir],{
+      env:backendEnvironment(resources,base),stdio:['ignore','ignore','ignore','ipc'],windowsHide:true,shell:false});
+    const timer=setTimeout(()=>reject(Error('실행 준비 시간이 초과됐습니다.')),15000);
+    worker.on('message',message=>{clearTimeout(timer);if(message.ready)resolve();else reject(Error(message.error==='port'?'49321 포트가 다른 프로그램에서 사용 중입니다.':'대화 서버를 시작하지 못했습니다.'));});
+    worker.on('error',()=>{clearTimeout(timer);reject(Error('앱 실행 환경을 시작하지 못했습니다. 다시 다운로드해 주세요.'));});
+    worker.on('exit',()=>{clearTimeout(timer);worker=null;if(!quitting&&!stoppingWorker){reject(Error('대화 서버가 종료됐습니다.'));dialog.showErrorBox('CODEPLANT ATTENTION','대화 서버가 종료됐습니다. 앱을 다시 실행해 주세요.');}});
+  });
+}
+async function openStudio(){
+  await startBackend();
+  if(window){await window.loadURL(local+'/');window.show();return;}
+  window=secureWindow({width:1500,height:960,minWidth:840,minHeight:640,title:'CODEPLANT ATTENTION'});
+  window.on('closed',()=>{window=null;});
+  window.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  await window.loadURL(local+'/');
+  if(smoke){
+    // Smoke mode never starts auth or model inference. It checks the packaged UI and document engine only.
+    const {runSmoke}=await import(pathToSmoke());await runSmoke({resources,base:app.getPath('userData'),window});app.quit();
+  }
+}
+function pathToSmoke(){return new URL('./smoke.mjs',import.meta.url).href;}
+if(!app.requestSingleInstanceLock())app.quit();
+else{
+  app.on('second-instance',()=>{(window||setup)?.show();(window||setup)?.focus();});
+  app.whenReady().then(async()=>{
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      ...(process.platform==='darwin'?[{role:'appMenu'}]:[]),
+      {label:'앱',submenu:[{label:'AI 추가·실행 도구 준비',click:showSetup},{label:'공개 사이트 열기',click:()=>external('https://codeplant-attention.vercel.app/')},{label:'자료 저장 폴더',click:()=>shell.openPath(app.getPath('userData'))},{type:'separator'},{role:'quit',label:'종료'}]},
+      {role:'editMenu',label:'편집'},{role:'viewMenu',label:'보기'}]));
+    if(smoke||installedProviders(app.getPath('userData')).length||await existing())await openStudio();else await showSetup();
+  }).catch(e=>{dialog.showErrorBox('CODEPLANT ATTENTION',e.message);app.exit(1);});
+  app.on('window-all-closed',()=>{if(!installing)app.quit();});
+  app.on('before-quit',event=>{
+    quitting=true;if(!worker)return;event.preventDefault();const child=worker;worker=null;
+    child.once('exit',()=>app.quit());child.send('close');setTimeout(()=>{child.kill();app.exit();},5000).unref();
+  });
+}

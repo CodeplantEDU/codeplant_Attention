@@ -1,0 +1,24 @@
+import {mkdir,writeFile,readFile,cp,rm} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const desktop=fileURLToPath(new URL('..',import.meta.url));
+const platform=process.argv[2]||process.platform,arch=process.argv[3]||process.arch;
+if(!['win32','darwin'].includes(platform)||!['x64','arm64'].includes(arch))throw Error('Unsupported platform/architecture');
+const version='v24.14.0',os=platform==='win32'?'win':'darwin',folder=`node-${version}-${os}-${arch}`;
+const name=folder+(platform==='win32'?'.zip':'.tar.gz');
+const root=path.join(desktop,'runtime',`${platform}-${arch}`),cache=path.join(desktop,'build',`${platform}-${arch}`);
+await mkdir(cache,{recursive:true});await mkdir(root,{recursive:true});
+const origin=`https://nodejs.org/dist/${version}/`;
+const [response,checks]=await Promise.all([fetch(origin+name),fetch(origin+'SHASUMS256.txt')]);
+if(!response.ok||!checks.ok)throw Error('Official Node download failed');
+const bytes=Buffer.from(await response.arrayBuffer());
+const checksum=(await checks.text()).split('\n').find(line=>line.endsWith('  '+name))?.split(' ')[0];
+if(!checksum||createHash('sha256').update(bytes).digest('hex')!==checksum)throw Error('Node checksum mismatch');
+const archive=path.join(cache,name);await writeFile(archive,bytes);
+if(platform==='win32')execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`Expand-Archive -LiteralPath '${archive.replaceAll("'","''")}' -DestinationPath '${cache.replaceAll("'","''")}' -Force`],{stdio:'inherit',windowsHide:true});
+else execFileSync('tar',['-xzf',archive,'-C',cache],{stdio:'inherit'});
+await cp(path.join(cache,folder),path.join(root,'node'),{recursive:true});
+// Keep the upstream license and npm's license notices next to the runtime.
+console.log(`Verified official Node ${version} for ${platform}-${arch}`);

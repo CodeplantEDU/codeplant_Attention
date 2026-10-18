@@ -13,3 +13,7 @@
 .DS_Store
 Thumbs.db
 **/.vercel/
+LECTURE_1/desktop/runtime/
+LECTURE_1/desktop/dist/
+LECTURE_1/desktop/build/
+LECTURE_1/desktop/.venv/

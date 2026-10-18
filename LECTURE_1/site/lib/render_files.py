@@ -1,6 +1,7 @@
 """Render model-authored data to files. Never execute model code or fetch URLs."""
 import csv
 import io
+import os
 import json
 import re
 import sys
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-ASSETS = Path(__file__).resolve().parents[1] / 'public' / 'assets'
+ASSETS = Path(os.environ.get('DIALOGUE_ASSETS') or Path(__file__).resolve().parents[1] / 'public' / 'assets')
 
 
 def plain(text):

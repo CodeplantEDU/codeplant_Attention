@@ -6,6 +6,7 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 
 const isFile=p=>{try{return existsSync(p);}catch{return false;}};
+export const nodeExecutable=(env=process.env)=>env.DIALOGUE_NODE_EXE||process.execPath;
 export function geminiEntrypoint(env=process.env){
   const override=env.DIALOGUE_GEMINI_SCRIPT;
   if(override){if(!path.isAbsolute(override)||!isFile(override)||path.extname(override)!=='.js')throw Error('Gemini 실행 경로를 확인하세요.');return override;}
@@ -17,15 +18,16 @@ export function geminiEntrypoint(env=process.env){
 }
 export function geminiHasLogin(env=process.env){return isFile(path.join(env.GEMINI_CLI_HOME||path.join(os.homedir(),'.gemini'),'oauth_creds.json'));}
 export function executable(provider,env=process.env){
-  if(provider==='gemini'){geminiEntrypoint(env);return process.execPath;}
-  const name=provider==='codex'?'codex.exe':'claude.exe';
+  if(provider==='gemini'){geminiEntrypoint(env);return nodeExecutable(env);}
+  const name=provider+(process.platform==='win32'?'.exe':'');
   const override=env[provider==='codex'?'DIALOGUE_CODEX_EXE':'DIALOGUE_CLAUDE_EXE'];
   if(override){if(!path.isAbsolute(override)||!isFile(override)||/\.(cmd|bat|ps1)$/i.test(override))throw Error('실행 파일 경로를 확인하세요.');return override;}
   const paths=(env.PATH||'').split(path.delimiter).map(x=>path.join(x,name));
   if(provider==='claude')paths.unshift(path.join(os.homedir(),'.local','bin',name));
   else {
-    const target=process.arch==='arm64'?'aarch64-pc-windows-msvc':'x86_64-pc-windows-msvc';
-    const pkg=`codex-win32-${process.arch}`;
+    const cpu=process.arch==='arm64'?'aarch64':'x86_64';
+    const target=`${cpu}-${process.platform==='darwin'?'apple-darwin':process.platform==='win32'?'pc-windows-msvc':'unknown-linux-musl'}`;
+    const pkg=`codex-${process.platform}-${process.arch}`;
     for(const root of [env.APPDATA&&path.join(env.APPDATA,'npm','node_modules'),path.join(path.dirname(process.execPath),'node_modules')].filter(Boolean)){
       paths.unshift(path.join(root,'@openai','codex','node_modules','@openai',pkg,'vendor',target,'bin',name));
       paths.push(path.join(root,'@openai',pkg,'vendor',target,'bin',name));
@@ -268,7 +270,7 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
 
 export function beginLogin(provider,cwd,onUrl,onExit){
   if(provider==='gemini'){
-    const child=spawn(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'login'],{cwd,env:geminiEnvironment(),windowsHide:true,shell:false});
+    const child=spawn(nodeExecutable(),[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'login'],{cwd,env:geminiEnvironment(),windowsHide:true,shell:false});
     let buffer='',finished=false;
     const finish=(ok,message)=>{if(finished)return;finished=true;clearTimeout(timer);onExit(ok,message);};
     const timer=setTimeout(()=>{kill(child);finish(false,'Google 로그인 시간이 초과됐습니다. 다시 로그인하세요.');},300000);
@@ -306,7 +308,7 @@ export function beginLogin(provider,cwd,onUrl,onExit){
 export async function logoutCLI(provider,cwd){
   if(!['codex','claude','gemini'].includes(provider))throw Error('AI를 선택하세요.');
   const result=provider==='gemini'
-    ?await capture(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd})
+    ?await capture(nodeExecutable(),[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd})
     :await capture(executable(provider),provider==='codex'?['logout']:['auth','logout'],{cwd});
   if(result.code!==0)throw Error('로그아웃에 실패했습니다. CLI 설치와 인증 파일 권한을 확인하세요.');
   const state=await connection(provider,cwd);

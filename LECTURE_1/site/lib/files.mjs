@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
-import {pythonExecutable} from './python.mjs';
+import {documentCommand} from './python.mjs';
 
 const execute=promisify(execFile);
 export const fileTypes=new Set(['docx','pdf','pptx','xlsx','md','txt','csv','json','html','css','js','ts','py','sql','yaml']);
@@ -39,7 +39,8 @@ export async function createFiles({dataDir,runId,packet,signal}){
   const items=packet.files.map(file=>({...file,id:randomUUID(),ext:path.extname(file.name).slice(1).toLowerCase()}));
   await writeFile(spec,JSON.stringify({files:items}),'utf8');
   let stdout;
-  try{stdout=(await execute(pythonExecutable(),[fileURLToPath(new URL('./render_files.py',import.meta.url)),spec,folder],{windowsHide:true,timeout:90000,maxBuffer:200000,signal,encoding:'utf8'})).stdout;}
+  const command=documentCommand('render',fileURLToPath(new URL('./render_files.py',import.meta.url)),[spec,folder]);
+  try{stdout=(await execute(command.exe,command.args,{windowsHide:true,timeout:90000,maxBuffer:200000,signal,encoding:'utf8'})).stdout;}
   catch(e){if(signal?.aborted)throw Error('중지됐습니다.');if(e.stdout)stdout=e.stdout;else throw Error('파일 생성에 실패했습니다. Python과 requirements.txt 설치를 확인하세요.');}
   const result=JSON.parse(stdout);if(result.error)throw Error(result.error);
   if(signal?.aborted)throw Error('중지됐습니다.');

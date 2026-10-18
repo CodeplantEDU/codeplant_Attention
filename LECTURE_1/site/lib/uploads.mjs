@@ -1,6 +1,6 @@
 import {mkdir,readFile,writeFile,rename,rm,access} from 'node:fs/promises';
 import path from 'node:path';
-import {pythonExecutable} from './python.mjs';
+import {documentCommand} from './python.mjs';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -13,7 +13,6 @@ export async function openUploads(dataDir){
   let files=[];
   try{files=JSON.parse(await readFile(index,'utf8'));if(!Array.isArray(files))throw Error();}
   catch(e){if(e.code!=='ENOENT')throw Error('자료 목록을 읽지 못했습니다. data/uploads 원본을 확인하세요.');}
-  const python=pythonExecutable();
   let busy=false;
   return {
     list:()=>files.map(({text,...meta})=>meta),
@@ -36,7 +35,8 @@ export async function openUploads(dataDir){
         await writeFile(source,bytes,{flag:'wx'});
         let output;
         const options={windowsHide:true,timeout:30000,maxBuffer:2*1024*1024,encoding:'utf8'};
-        try{output=(await exec(python,[fileURLToPath(new URL('./extract.py',import.meta.url)),source],options)).stdout;}
+        const command=documentCommand('extract',fileURLToPath(new URL('./extract.py',import.meta.url)),[source]);
+        try{output=(await exec(command.exe,command.args,options)).stdout;}
         catch(e){if(e.stdout)output=e.stdout;else throw reject('Python 3.10 이상 설치를 확인하세요. 문서 읽기 제한 시간은 30초입니다.');}
         const result=JSON.parse(output);if(result.error)throw reject(result.error);
         const file={id,name,size:bytes.length,chars:result.text.length,warning:result.warning,preview:result.text.slice(0,500),createdAt:new Date().toISOString(),text:result.text};

@@ -11,7 +11,7 @@
 <body>
   <header class="app-header">
     <a class="brand" href="/" aria-label="ATTENTION 개인 AI 작업실"><span class="wordmark">attention<span class="brand-period">.</span></span><span class="brand-caption">개인 AI 작업실</span></a>
-    <nav class="header-meta" aria-label="작업실"><a href="#setup-panel" class="text-button">AI 설정</a><a href="#activity-panel" class="text-button">자료 · 연결</a><button id="reset-layout" class="text-button reset-layout">화면 폭 초기화</button><span class="local-label"><span class="dot"></span>LOCAL SERVER</span><button id="new-task" class="button secondary compact">+ 새 대화</button></nav>
+    <nav class="header-meta" aria-label="작업실"><a href="#setup-panel" class="text-button">AI 설정</a><a href="#activity-panel" class="text-button">자료 · 연결</a><button id="reset-layout" class="text-button reset-layout">화면 폭 초기화</button><span class="local-label"><span class="dot"></span>LOCAL SERVER</span><button id="new-task" class="button secondary compact">+ 새 대화</button><button id="finish-app" class="button secondary compact exit-button" disabled>끝내기</button></nav>
   </header>
 
   <main class="workspace">
@@ -71,6 +71,7 @@
       <div class="sidebar-footer">개인 서버 · 사용자 계정<span>자료는 이 PC에 저장됩니다.</span></div>
     </aside>
   </main>
+  <section id="shutdown-screen" class="shutdown-screen" role="status" tabindex="-1" hidden><div><span class="eyebrow">LOCAL SERVER OFF</span><h2>작업실을 종료했습니다.</h2><p>자료와 대화는 이 PC에 보관되어 있습니다.<br>이 탭을 닫아도 됩니다.</p><p>다시 사용하려면 <strong>실행.cmd</strong> 또는 <strong>npm start</strong>로 서버를 켜세요.</p></div></section>
   <template id="role-template"><div class="role-card"><label class="role-preset-label">역할 선택<select class="role-preset"><option value="custom">직접 작성</option><option value="analysis">분석 담당</option><option value="review">검토 담당</option><option value="evidence">근거 확인 담당</option><option value="execution">실행 계획 담당</option></select></label><div class="role-heading"><label>역할 이름<input class="role-name" maxlength="40" placeholder="예: 분석 담당" required></label><button type="button" class="remove-role" aria-label="이 역할 삭제">×</button></div><label class="role-task-label">할 일<textarea class="role-task" rows="2" maxlength="2000" placeholder="이 역할이 확인할 내용을 적어주세요." required></textarea></label></div></template>
 </body>
 </html>

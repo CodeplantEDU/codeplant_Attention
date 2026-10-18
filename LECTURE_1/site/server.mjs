@@ -56,7 +56,7 @@ function renderExport(run){
     `\n## 최종 답변\n\n${run.final||'완료된 최종 답변이 없습니다.'}\n`;
 }
 
-export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI,webOrigin=process.env.DIALOGUE_WEB_ORIGIN||WEB_ORIGIN}={}){
+export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI,onShutdown=null,webOrigin=process.env.DIALOGUE_WEB_ORIGIN||WEB_ORIGIN}={}){
   await mkdir(dataDir,{recursive:true});
   const uploads=await openUploads(dataDir);
   const stateFile=path.join(dataDir,'runs.json');let runs=[];
@@ -222,12 +222,17 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.0',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
-      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.1',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
+      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,canShutdown:!remote&&typeof onShutdown==='function',connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];
         if(!remote&&(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token))))throw fail(403,'화면을 새로고침한 뒤 다시 실행하세요.');
         const body=await jsonBody(req);
+        if(url.pathname==='/api/shutdown'){
+          if(remote||typeof onShutdown!=='function')throw fail(403,'개인 서버의 로컬 화면에서만 종료할 수 있습니다.');
+          if(active||loginStops.size||logoutRunning)throw fail(409,'진행 중인 대화 또는 로그인을 먼저 마치거나 취소하세요.');
+          await save();json(200,{ok:true});setImmediate(onShutdown);return;
+        }
         if(remote&&url.pathname==='/api/bridge/disconnect'){bridge.disconnect(supplied);return json(200,{ok:true});}
         if(url.pathname==='/api/bridge/code'||url.pathname==='/api/bridge/revoke'){
           if(remote)throw fail(403,'PC의 로컬 화면에서만 연결을 관리할 수 있습니다.');

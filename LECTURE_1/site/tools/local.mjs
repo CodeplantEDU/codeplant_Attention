@@ -23,7 +23,7 @@ try{const response=await fetch(url+'/api/health',{signal:AbortSignal.timeout(120
 if(existing?.service==='codeplant-ai-dialogue'&&existing.workspace===workspace){
   console.log('이미 실행 중인 개인 작업실: '+url);browser();
 }else{
-  const service=await createService({root,dataDir});
+  const service=await createService({root,dataDir,onShutdown:()=>service.close().then(()=>process.exit())});
   try{
     await new Promise((resolve,reject)=>{service.server.once('error',reject);service.server.listen(port,'127.0.0.1',resolve);});
   }catch(error){

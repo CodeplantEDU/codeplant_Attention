@@ -29,11 +29,11 @@ test('model list excludes hidden/invalid entries and passes selected IDs to both
     const args=argumentsFor(provider,{model});assert.equal(args[args.indexOf('--model')+1],model);
   }
 });
-async function setup(t,cli,check=ready){
+async function setup(t,cli,check=ready,options={}){
   const testRoot=fileURLToPath(new URL('../../tmp/dialogue-tests/',import.meta.url));
   await mkdir(testRoot,{recursive:true});
   const dataDir=await mkdtemp(path.join(testRoot,'case-'));
-  const app=await createService({dataDir,cli,check});
+  const app=await createService({dataDir,cli,check,...options});
   t.after(()=>app.close());
   await new Promise(r=>app.server.listen(0,'127.0.0.1',r));await app.refresh();
   const url=`http://127.0.0.1:${app.server.address().port}`;
@@ -46,6 +46,28 @@ async function wait(get,status){
   for(let i=0;i<80;i++){const s=await get();if(s.runs[0]?.status===status)return s.runs[0];await new Promise(r=>setTimeout(r,20));}
   throw Error(`status ${status} not reached`);
 }
+test('local shutdown checks its token, persists records and closes only its own server',async t=>{
+  let finished;const closed=new Promise(resolve=>{finished=resolve;});
+  const s=await setup(t,async()=>({text:'test',agentCount:0}),ready,{onShutdown:async()=>{await s.app.close();finished();}});
+  assert.equal((await s.get()).canShutdown,true);
+  assert.equal((await s.post('/api/shutdown',{}, {'x-local-token':'wrong'})).status,403);
+  assert.equal((await s.post('/api/shutdown',{})).status,200);
+  await closed;
+  assert.deepEqual(JSON.parse(await readFile(path.join(s.dataDir,'runs.json'),'utf8')),[]);
+  await assert.rejects(()=>fetch(s.url+'/api/health',{signal:AbortSignal.timeout(1000)}));
+});
+test('shutdown is opt-in and refuses active work or authentication',async t=>{
+  const basic=await setup(t,async()=>({text:'test',agentCount:0}));
+  assert.equal((await basic.post('/api/shutdown',{})).status,403);
+  let calls=0;
+  const s=await setup(t,async(_p,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('stopped')))),async p=>({...await ready(),loggedIn:p!=='claude'}),{onShutdown:()=>{calls++;},login:()=>()=>{}});
+  assert.equal((await s.post('/api/login',{provider:'claude'})).status,202);
+  assert.equal((await s.post('/api/shutdown',{})).status,409);
+  await s.post('/api/login/cancel',{provider:'claude'});
+  assert.equal((await s.post('/api/runs',{main:'codex',prompt:'public fixture'})).status,202);
+  assert.equal((await s.post('/api/shutdown',{})).status,409);
+  assert.equal(calls,0);
+});
 for(const main of ['codex','claude'])test(`${main} main: actual delegate branch and conversation order`,async t=>{
   const calls=[];
   const cli=async(provider,opts)=>{

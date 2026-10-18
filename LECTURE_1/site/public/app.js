@@ -18,6 +18,7 @@ let lastAgents = '';
 let actionPending = false;
 let pollTimer;
 let disconnected = false;
+let ended = false;
 let uploading = false;
 let composerRunId = null;
 let lastRunAttachments = '';
@@ -474,6 +475,11 @@ async function uploadFiles(files) {
 }
 
 function updateControls() {
+  const finish=$('#finish-app');
+  if(finish){
+    finish.disabled=ended||actionPending||uploading||!currentState?.canShutdown||Boolean(currentState?.activeRunId)||Object.values(currentState?.connections||{}).some(c=>c.loginRunning||c.logoutRunning);
+    finish.title='진행 중인 대화나 로그인을 마친 뒤 개인 서버를 종료합니다.';
+  }
   const active = activeRun();
   const main = $('input[name="main"]:checked')?.value || 'codex';
   const peer = $('#peer-select').value;
@@ -673,6 +679,7 @@ async function refresh() {
 }
 
 async function poll() {
+  if(ended)return;
   if (cloudMode && !bridgeToken) return;
   try {
     await refresh();
@@ -680,11 +687,12 @@ async function poll() {
     disconnected = false;
   }
   catch {
+    if(ended)return;
     disconnected = true;
     notice('로컬 서비스에 연결하지 못했습니다. 실행 창을 확인해주세요. 자동으로 다시 연결합니다.');
   }
   clearTimeout(pollTimer);
-  pollTimer = setTimeout(poll, activeRun() ? 1000 : 4000);
+  if(!ended)pollTimer = setTimeout(poll, activeRun() ? 1000 : 4000);
 }
 
 async function action(callback) {
@@ -710,6 +718,19 @@ $('#new-task').addEventListener('click', () => {
   notice('');
   render();
   $('#prompt').focus();
+});
+$('#finish-app').addEventListener('click', async () => {
+  if(actionPending||uploading)return;
+  actionPending=true;updateControls();
+  try{
+    await request('/api/shutdown',{});
+    ended=true;clearTimeout(pollTimer);
+    $('.workspace').inert=true;
+    $('#new-task').disabled=true;
+    $('#shutdown-screen').hidden=false;$('#shutdown-screen').focus();
+    setText($('#finish-app'),'종료됨');
+  }catch(error){notice(error.message||'서버를 종료하지 못했습니다.');}
+  finally{actionPending=false;updateControls();}
 });
 $('#run-form').addEventListener('submit', event => {
   event.preventDefault();

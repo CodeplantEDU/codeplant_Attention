@@ -1,5 +1,7 @@
 # CODEPLANT AI 대화 스튜디오 v0.5
 
+**명령어 없이 실행:** [Windows EXE · Mac 앱 다운로드 및 사용법](../desktop/README.md). 앱에는 Node와 문서 엔진이 포함되며, 사용할 AI 도구만 첫 실행 시 자동으로 준비합니다. 아래 수동 설치 안내는 소스로 실행할 때 사용합니다.
+
 ## Vercel 공개 화면 + 본인 PC 연결
 
 공개 주소: **https://codeplant-attention.vercel.app/**

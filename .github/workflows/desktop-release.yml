@@ -6,10 +6,16 @@ on:
         description: 'Release tag'
         required: true
         default: desktop-v0.6.0
+      runtime_run:
+        description: 'Optional successful runtime build run ID (same runtime source only)'
+        required: false
+        default: ''
 permissions:
   contents: write
+  actions: read
 jobs:
   runtime:
+    if: ${{ inputs.runtime_run == '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +53,7 @@ jobs:
           retention-days: 5
   package:
     needs: runtime
+    if: ${{ always() && (needs.runtime.result == 'success' || (needs.runtime.result == 'skipped' && inputs.runtime_run != '')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +77,8 @@ jobs:
         with:
           pattern: runtime-${{ matrix.platform }}-*
           path: LECTURE_1/desktop/build/downloads
+          run-id: ${{ inputs.runtime_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Restore runtime permissions
         shell: bash
         run: |

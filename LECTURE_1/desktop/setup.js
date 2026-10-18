@@ -6,6 +6,6 @@ document.querySelector('#setup').addEventListener('submit',async event=>{
   event.preventDefault();const providers=[...document.querySelectorAll('input:checked')].map(x=>x.value);
   if(!providers.length){message('AI를 하나 이상 선택하세요.');return;}
   install.disabled=open.disabled=true;
-  try{const result=await window.attention.install(providers);message('준비 완료: '+result.installed.join(', ')+'. 대화 화면에서 로그인하세요.');open.disabled=false;}catch(e){message(e.message);}finally{install.disabled=false;}
+  try{const result=await window.attention.install(providers);message('준비 완료: '+result.installed.join(', ')+'. 대화 화면에서 로그인하세요.');open.disabled=false;}catch(e){message(e.message);const s=await window.attention.status();open.disabled=!s.installed.length&&!s.usingExisting;}finally{install.disabled=false;}
 });
 open.addEventListener('click',async()=>{open.disabled=true;try{await window.attention.open();}catch(e){message(e.message);open.disabled=false;}});

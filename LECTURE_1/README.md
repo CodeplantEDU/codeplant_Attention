@@ -4,6 +4,7 @@ Codex·Claude·Gemini 중 하나를 메인으로 선택하고, 양쪽의 역할�
 
 | 필요한 것 | 열 파일 |
 |---|---|
+| Windows EXE · Mac 앱 받기 | [desktop/README.md](desktop/README.md) |
 | 지금 프로그램 실행 | [site/실행.cmd](site/실행.cmd) |
 | 설치·로그인·오류 해결 | [site/README.md](site/README.md) |
 | Codex에 복사할 지시문 | [Codex에_이렇게_입력.md](docs/Codex에_이렇게_입력.md) |

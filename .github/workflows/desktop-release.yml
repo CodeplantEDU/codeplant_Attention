@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag'
         required: true
-        default: desktop-v0.6.0
+        default: desktop-v0.6.1
       runtime_run:
         description: 'Optional successful runtime build run ID (same runtime source only)'
         required: false
@@ -191,4 +191,4 @@ jobs:
         run: |
           cd release-files
           sha256sum *.exe *.dmg > SHA256SUMS.txt
-          gh release create "$TAG" *.exe *.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "ATTENTION Desktop 0.6.0" --notes-file ../LECTURE_1/desktop/RELEASE.md
+          gh release create "$TAG" *.exe *.dmg SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "ATTENTION Desktop ${TAG#desktop-v}" --notes-file ../LECTURE_1/desktop/RELEASE.md

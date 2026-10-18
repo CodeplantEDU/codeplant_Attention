@@ -1,7 +1,7 @@
 {
   "name": "codeplant-attention-desktop",
   "productName": "CODEPLANT ATTENTION",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "AI 대화 스튜디오 · 개인 계정으로 사용하는 데스크톱 앱",
   "author": "CODEPLANT",
   "private": true,
@@ -22,7 +22,7 @@
     "appId": "kr.codeplant.attention",
     "asar": true,
     "directories": {"output": "dist"},
-    "files": ["main.mjs", "runtime.mjs", "smoke.mjs", "setup.html", "setup.js", "preload.cjs", "package.json"],
+    "files": ["main.mjs", "auth.mjs", "runtime.mjs", "smoke.mjs", "setup.html", "setup.js", "preload.cjs", "package.json"],
     "extraResources": [
       {"from": "../site", "to": "site", "filter": ["server.mjs", "lib/**", "tools/gemini-auth.mjs", "public/**"]},
       {"from": "worker.mjs", "to": "worker.mjs"},

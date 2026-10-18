@@ -36,6 +36,24 @@ $qaSetup = Start-Process -FilePath $qaInstaller -ArgumentList @('/S','/currentus
 if ($qaSetup.ExitCode -ne 0) { throw "Installer exit: $($qaSetup.ExitCode)" }
 $qaExe = Join-Path $qaInstall 'CODEPLANT ATTENTION.exe'
 if (-not (Test-Path -LiteralPath $qaExe)) { throw 'Installed executable missing' }
+Add-Type -TypeDefinition @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class InstallerPathCheck {
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  public static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
+}
+"@
+function Get-InstallerFinalPath([string]$file) {
+  $stream = [IO.File]::OpenRead($file)
+  try {
+    $buffer = New-Object Text.StringBuilder 32768
+    if ([InstallerPathCheck]::GetFinalPathNameByHandle($stream.SafeFileHandle,$buffer,32768,0) -eq 0) { throw 'Cannot resolve installed path' }
+    return $buffer.ToString()
+  } finally { $stream.Dispose() }
+}
 $qaShortcutShell = New-Object -ComObject WScript.Shell
 $qaFoundShortcuts = @()
 foreach ($qaCandidates in @(
@@ -44,7 +62,9 @@ foreach ($qaCandidates in @(
 )) {
   $qaShortcut = $qaCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if (-not $qaShortcut) { throw ('Shortcut missing from profile: '+($qaCandidates -join ', ')) }
-  if ($qaShortcutShell.CreateShortcut($qaShortcut).TargetPath -ne $qaExe) { throw 'Shortcut target mismatch' }
+  $qaTarget = $qaShortcutShell.CreateShortcut($qaShortcut).TargetPath
+  @{shortcut=$qaShortcut;target=$qaTarget;expected=$qaExe} | ConvertTo-Json | Add-Content (Join-Path $qaEvidence 'shortcut-paths.jsonl') -Encoding utf8
+  if ((Get-InstallerFinalPath $qaTarget) -ne (Get-InstallerFinalPath $qaExe)) { throw 'Shortcut target mismatch' }
   $qaFoundShortcuts += $qaShortcut
 }
 $qaRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -like 'CODEPLANT ATTENTION*' -and $_.DisplayVersion -eq '0.7.0' }

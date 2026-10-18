@@ -135,6 +135,24 @@ test('one connected main enables starting; only the selected peer is required fo
     $('#peer-select').value='';helpers.updateControls();assert.equal($('#start-run').disabled,false);
   }
 });
+test('add and remove peer controls exclude main and duplicates, require both accounts and enable all selected models',()=>{
+  const elements=new Map();
+  const element=selector=>{if(!elements.has(selector))elements.set(selector,{value:'',children:[],options:[],events:{},addEventListener(n,fn){this.events[n]=fn;}});return elements.get(selector);};
+  element('input[name="main"]:checked').value='codex';element('#peer-select').value='claude';
+  for(const id of ['#peer-select','#second-peer-select'])element(id).options=['','codex','claude','gemini'].map(value=>({value}));
+  element('#gemini-model-select').value='__custom__';
+  const {context,helpers}=helperContext({document:{querySelector:element,querySelectorAll:()=>[]}});
+  vm.runInContext("currentState={connections:{codex:{loggedIn:true},claude:{loggedIn:true},gemini:{loggedIn:false}},runs:[],activeRunId:null}",context);
+  const start=source.indexOf("$('#add-peer').addEventListener"),end=source.indexOf('for (const provider of providers)',start);
+  vm.runInContext(source.slice(start,end),context);
+  element('#add-peer').events.click();
+  assert.equal(element('#second-peer-select').value,'gemini');assert.equal(element('#start-run').disabled,true);assert.equal(element('#gemini-model').disabled,false);
+  vm.runInContext('currentState.connections.gemini.loggedIn=true',context);helpers.updateControls();assert.equal(element('#start-run').disabled,false);
+  assert.equal(element('#second-peer-select').options.find(o=>o.value==='codex').disabled,true);assert.equal(element('#second-peer-select').options.find(o=>o.value==='claude').disabled,true);
+  element('#remove-peer').events.click();assert.equal(element('#second-peer-select').value,'');assert.equal(element('#second-peer-group').hidden,true);
+  element('#add-peer').events.click();element('input[name="main"]:checked').value='claude';helpers.updateControls();
+  assert.equal(element('#peer-select').value,'gemini');assert.equal(element('#second-peer-select').value,'');
+});
 
 test('round settings accept custom positive integers and unlimited conditions, rejecting invalid counts', () => {
   const { helpers } = helperContext();

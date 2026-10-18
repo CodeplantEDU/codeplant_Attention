@@ -241,7 +241,7 @@ async function request(path, body) {
 }
 
 function addRole(name = '', task = '', side = 'main', preset = 'custom') {
-  const list = $(side === 'peer' ? '#peer-role-list' : '#role-list');
+  const list = $(side === 'main' ? '#role-list' : side === 'peer' ? '#peer-role-list' : '#peer2-role-list');
   if (list.children.length >= 3) return;
   const card = $('#role-template').content.firstElementChild.cloneNode(true);
   $('.role-name', card).value = name;
@@ -273,6 +273,10 @@ function connectRoleEditor(side, presets) {
     if (presets[select.value]) input.value = presets[select.value];
   });
   input.addEventListener('input', () => { select.value = 'custom'; });
+}
+function selectedPeers(){return [$('#peer-select').value,$('#second-peer-select').value].filter(Boolean);}
+function readPeerSettings(){
+  return Object.fromEntries(selectedPeers().map((p,i)=>[p,{role:$(i?'#peer2-role':'#peer-role').value.trim(),agentRoles:p==='gemini'?[]:readRoles(i?'#peer2-role-list':'#peer-role-list')}]));
 }
 
 function getSelectedRun() {
@@ -368,7 +372,7 @@ function renderRunAttachments(run) {
 }
 
 function renderRunSettings(run) {
-  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition, run?.models, run?.peer]);
+  const signature = JSON.stringify([run?.id, run?.main, run?.mainRole, run?.peerRole, run?.agentRoles, run?.peerAgentRoles, run?.rounds, run?.stopCondition, run?.models, run?.peer,run?.peers,run?.peerSettings]);
   if (signature === lastRunSettings) return;
   lastRunSettings = signature;
   $('#run-settings').hidden = !run;
@@ -378,9 +382,10 @@ function renderRunSettings(run) {
   const rounds = run.rounds === null ? '횟수 제한 없이' : `${run.rounds || 1}회 왕복`;
   list.append(node('p', 'run-round-summary', (run.peer === null ? '메인 AI만 사용' : rounds) + (run.peer !== null && run.rounds === null ? ` · 종료: ${run.stopCondition || '수동 중지'}` : '')));
   const peer = run.peer === undefined ? (run.main === 'codex' ? 'claude' : 'codex') : run.peer;
+  const peers=run.peers||[peer].filter(Boolean);
   for (const [label, provider, text, roles] of [
     ['메인', run.main, run.mainRole, run.agentRoles || []],
-    ['상대', peer, run.peerRole, run.peerAgentRoles || []]
+    ...peers.map((p,i)=>['상대 '+(i+1),p,run.peerSettings?.[p]?.role||run.peerRole,run.peerSettings?.[p]?.agentRoles||(i===0?run.peerAgentRoles||[]:[])])
   ]) {
     if (!provider) continue;
     const section = node('section', 'run-setting-side');
@@ -482,8 +487,11 @@ function updateControls() {
   }
   const active = activeRun();
   const main = $('input[name="main"]:checked')?.value || 'codex';
-  const peer = $('#peer-select').value;
-  const ready = !currentState?.installing && Boolean(currentState?.connections?.[main]?.loggedIn) && (!peer || Boolean(currentState?.connections?.[peer]?.loggedIn));
+  const first=$('#peer-select'),second=$('#second-peer-select');
+  if(first.value===main){first.value=second.value===main?'':second.value;second.value='';}
+  if(!first.value||second.value===main||second.value===first.value)second.value='';
+  const peer=first.value,peer2=second.value,peers=selectedPeers();
+  const ready = !currentState?.installing && Boolean(currentState?.connections?.[main]?.loggedIn) && peers.every(p=>Boolean(currentState?.connections?.[p]?.loggedIn));
   $('#start-run').disabled = actionPending || uploading || Boolean(active) || !ready;
   $('#start-run').title = active ? '현재 작업을 마치거나 중지한 뒤 시작할 수 있습니다.' : !ready ? '선택한 메인과 상대 AI의 설치·로그인을 확인하세요. 상대 없음은 메인만 연결하면 됩니다.' : '';
   const label = actionPending ? '요청 중…' : active ? '작업이 진행 중입니다' : '대화 시작';
@@ -491,6 +499,11 @@ function updateControls() {
   $('#add-role').disabled = $('#role-list').children.length >= 3;
   $('#add-peer-role').disabled = $('#peer-role-list').children.length >= 3;
   setText($('#peer-role-count'), $('#peer-role-list').children.length);
+  $('#add-peer2-role').disabled=$('#peer2-role-list').children.length>=3;
+  setText($('#peer2-role-count'),$('#peer2-role-list').children.length);
+  $('#add-peer').hidden=Boolean(peer2);$('#add-peer').disabled=!peer;
+  $('#second-peer-group').hidden=!peer2;
+  $('#peer2-role').disabled=!peer2;
   $('#stop-run').disabled = actionPending;
   $('#upload-files').disabled = uploading;
   const run = getSelectedRun();
@@ -498,7 +511,8 @@ function updateControls() {
   $('#followup-message').disabled = actionPending || Boolean(active) || Boolean(currentState?.installing);
   $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || Boolean(currentState?.installing) || !mainReady || !$('#followup-message').value.trim();
   setText($('#send-followup'), actionPending ? '요청 중…' : active ? '대화 진행 중' : '후속 메시지 보내기');
-  for (const option of $('#peer-select').options) option.disabled = option.value === main;
+  for (const option of first.options) option.disabled = Boolean(option.value)&&(option.value===main||option.value===peer2);
+  for (const option of second.options) option.disabled = Boolean(option.value)&&(option.value===main||option.value===peer);
   $('#dialogue-settings').hidden = !peer;
   $('#peer-role').disabled = !peer;
   $('#main-agent-support').hidden = main !== 'gemini';
@@ -508,15 +522,18 @@ function updateControls() {
   $('.peer-agent-settings').hidden = !peer || peer === 'gemini';
   document.querySelectorAll('#role-list input, #role-list textarea, #role-list select').forEach(element => { element.disabled = main === 'gemini'; });
   document.querySelectorAll('#peer-role-list input, #peer-role-list textarea, #peer-role-list select').forEach(element => { element.disabled = !peer || peer === 'gemini'; });
+  $('.peer2-agent-settings').hidden=!peer2||peer2==='gemini';
+  document.querySelectorAll('#peer2-role-list input, #peer2-role-list textarea, #peer2-role-list select').forEach(element=>{element.disabled=!peer2||peer2==='gemini';});
   for (const provider of providers) {
-    const needed = provider === main || provider === peer;
+    const needed = provider === main || peers.includes(provider);
     const custom = $(`#${provider}-model-select`).value === '__custom__';
     $(`#${provider}-model`).disabled = !needed || !custom;
     $(`#${provider}-model`).required = needed && custom;
   }
-  setText($('#peer-name'), providerNames[peer] || '상대 AI');
+  setText($('#peer-name'), peers.map(p=>providerNames[p]).join(' · ') || '상대 AI');
   document.querySelectorAll('.main-provider-name').forEach(element => setText(element, providerNames[main]));
   document.querySelectorAll('.peer-provider-name').forEach(element => setText(element, providerNames[peer] || '상대 AI'));
+  document.querySelectorAll('.peer2-provider-name').forEach(element=>setText(element,providerNames[peer2]||'두 번째 상대'));
 }
 
 function renderConnections() {
@@ -721,9 +738,13 @@ async function action(callback) {
 $('#add-role').addEventListener('click', () => addRole());
 $('#rounds').addEventListener('change', updateRoundFields);
 $('#peer-select').addEventListener('change', updateControls);
+$('#second-peer-select').addEventListener('change',updateControls);
+$('#add-peer').addEventListener('click',()=>{$('#second-peer-select').value=providers.find(p=>p!==$('input[name="main"]:checked').value&&p!==$('#peer-select').value)||'';updateControls();});
+$('#remove-peer').addEventListener('click',()=>{$('#second-peer-select').value='';updateControls();});
 for (const provider of providers) $(`#${provider}-model-select`).addEventListener('change', () => { updateModelCustomField(provider); updateControls(); });
 $('#add-peer-role').addEventListener('click', () => addRole('', '', 'peer'));
-document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', () => { mainChosen = true; if ($('#peer-select').value === input.value) $('#peer-select').value = ''; updateControls(); }));
+$('#add-peer2-role').addEventListener('click',()=>addRole('','','peer2'));
+document.querySelectorAll('input[name="main"]').forEach(input => input.addEventListener('change', () => { mainChosen = true; updateControls(); }));
 $('#new-task').addEventListener('click', () => {
   selectedRunId = null;
   initialSelection = false;
@@ -753,20 +774,21 @@ $('#run-form').addEventListener('submit', event => {
   if (!prompt) { $('#prompt').focus(); return; }
   const main = $('input[name="main"]:checked').value;
   const peer = $('#peer-select').value || null;
+  const peers=selectedPeers(),peerSettings=readPeerSettings();
   const agentRoles = main === 'gemini' ? [] : readRoles('#role-list');
   const peerAgentRoles = !peer || peer === 'gemini' ? [] : readRoles('#peer-role-list');
-  if ([...agentRoles, ...peerAgentRoles].some(role => !role.name || !role.task)) { notice('양쪽 서브 에이전트의 역할 이름과 할 일을 입력해주세요.'); return; }
+  if ([...agentRoles, ...Object.values(peerSettings).flatMap(s=>s.agentRoles)].some(role => !role.name || !role.task)) { notice('각 AI 서브 에이전트의 역할 이름과 할 일을 입력해주세요.'); return; }
   const mainRole = $('#main-role').value.trim();
   const peerRole = $('#peer-role').value.trim();
-  if (!mainRole || !peerRole) { notice('메인 AI와 상대 AI의 역할을 입력해주세요.'); return; }
+  if (!mainRole || !peerRole || Object.values(peerSettings).some(s=>!s.role)) { notice('메인 AI와 상대 AI의 역할을 입력해주세요.'); return; }
   let roundSettings;
   let models;
   try { roundSettings = readRoundSettings($('#rounds').value, $('#custom-rounds').value, $('#stop-condition').value); }
   catch (error) { notice(error.message); return; }
-  try { models = Object.fromEntries(providers.map(p => [p, p === main || p === peer ? readSelectedModel(p) : ''])); }
+  try { models = Object.fromEntries(providers.map(p => [p, p === main || peers.includes(p) ? readSelectedModel(p) : ''])); }
   catch (error) { notice(error.message); return; }
   action(async () => {
-    const result = await request('/api/runs', { prompt, main, peer, ...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models, attachmentIds: attachmentIds() });
+    const result = await request('/api/runs', { prompt, main, peer, peers,peerSettings,...roundSettings, mainRole, peerRole, agentRoles, peerAgentRoles, models, attachmentIds: attachmentIds() });
     selectedRunId = result.id;
     initialSelection = false;
   });
@@ -819,7 +841,8 @@ $('#followup-form').addEventListener('submit', event => {
   const message = $('#followup-message').value.trim();
   if (!run || !message || activeRun() || actionPending || uploading) return;
   action(async () => {
-    await request(`/api/runs/${encodeURIComponent(run.id)}/messages`, { message, peer: $('#peer-select').value || undefined, attachmentIds: attachmentIds() });
+    const peers=selectedPeers();
+    await request(`/api/runs/${encodeURIComponent(run.id)}/messages`, { message, peers:peers.length?peers:undefined,peerSettings:peers.length?readPeerSettings():undefined,attachmentIds: attachmentIds() });
     followupDrafts.delete(run.id);
     $('#followup-message').value = '';
   });
@@ -900,6 +923,7 @@ document.addEventListener('click', async event => {
 
 connectRoleEditor('main', mainRolePresets);
 connectRoleEditor('peer', peerRolePresets);
+connectRoleEditor('peer2',peerRolePresets);
 updateRoundFields();
 for (const provider of providers) updateModelCustomField(provider);
 connectPanelResize();

@@ -4,7 +4,7 @@ import {mkdtemp,readFile,writeFile,mkdir} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createService,validateRun,dialogueRequested,requestedRounds} from '../server.mjs';
+import {createService,validateRun,validatePeers,dialogueRequested,requestedRounds} from '../server.mjs';
 import {requestedFormats,parseFilePackage} from '../lib/files.mjs';
 import {argumentsFor,parseEvent,parseOwnedActivity,codexModelOptions,runCLI,geminiEnvironment} from '../lib/providers.mjs';
 import {control} from '../tools/control.mjs';
@@ -85,6 +85,42 @@ for(const main of ['codex','claude'])test(`${main} main: actual delegate branch 
   assert.equal(run.agents.length,1);assert.equal(run.final,'reply-5');
   assert.equal(JSON.parse(await readFile(path.join(s.dataDir,'runs.json'),'utf8'))[0].status,'completed');
   const exported=await fetch(s.url+`/api/runs/${run.id}/export`).then(x=>x.text());assert.match(exported,/reply-5/);
+});
+for(const main of ['codex','claude','gemini'])test(`${main} combines both peers with separate models and roles, and followups stay main-only unless requested`,async t=>{
+  const peers=['codex','claude','gemini'].filter(p=>p!==main),calls=[];
+  const models=Object.fromEntries([main,...peers].map(p=>[p,p+'-model']));
+  const peerSettings=Object.fromEntries(peers.map(p=>[p,{role:p+' unique review',agentRoles:p==='gemini'?[]:[{name:p+' helper',task:'public review'}]}]));
+  const s=await setup(t,async(p,opts)=>{
+    calls.push({p,...opts});
+    for(let i=0;i<opts.roles.length;i++)opts.onEvent({kind:'agent',id:'same-id',name:'helper_'+(i+1),status:'completed',text:p+' findings'});
+    return {text:'response:'+p+':'+calls.length,agentCount:opts.roles.length};
+  });
+  const response=await s.post('/api/runs',{main,peers,peerSettings,models,prompt:'public dual peer task',rounds:2});assert.equal(response.status,202);
+  const {id}=await response.json(),run=await wait(s.get,'completed');
+  assert.deepEqual(calls.map(c=>c.p),[main,...peers,main,...peers,main]);
+  assert.equal(run.roundsCompleted,2);
+  for(let i=0;i<peers.length;i++){
+    const p=peers[i];assert.equal(calls[i+1].model,models[p]);assert.match(calls[i+1].prompt,new RegExp(p+' unique review'));
+    assert.ok(calls[3].prompt.includes('response:'+p+':'+(i+2)));
+  }
+  assert.ok(!calls[2].prompt.includes('response:'+peers[0]+':2'),'reviewers receive the same prior draft');
+  const exported=await fetch(s.url+`/api/runs/${id}/export`).then(r=>r.text());for(const p of peers)assert.ok(exported.includes(p+' unique review'));
+  let count=calls.length;
+  await s.post(`/api/runs/${id}/messages`,{message:'설명을 보완해줘'});await wait(s.get,'completed');assert.deepEqual(calls.slice(count).map(c=>c.p),[main]);
+  count=calls.length;
+  await s.post(`/api/runs/${id}/messages`,{message:'1회 왕복해'});await wait(s.get,'completed');assert.deepEqual(calls.slice(count).map(c=>c.p),[main,...peers,main]);
+  assert.ok(calls.slice(count).every(c=>c.roles.length===0));
+});
+test('peer lists reject main, duplicate and invalid providers; all selected peers must be connected',async t=>{
+  for(const peers of [null,'claude',['codex'],['claude','claude'],['claude','gemini','codex'],['invalid']])assert.throws(()=>validatePeers('codex',peers));
+  assert.throws(()=>validateRun({main:'codex',peers:['claude','gemini'],prompt:'public',peerSettings:{gemini:{role:'review',agentRoles:[{name:'a',task:'b'}]}}}));
+  let calls=0;const s=await setup(t,async()=>{calls++;return {text:'unused'};},async p=>({...await ready(),loggedIn:p!=='gemini'}));
+  assert.equal((await s.post('/api/runs',{main:'codex',peers:['claude','gemini'],prompt:'public'})).status,409);assert.equal(calls,0);
+});
+test('a failing second peer preserves the first review without fabricating a combined final answer',async t=>{
+  const calls=[];const s=await setup(t,async p=>{calls.push(p);if(p==='gemini')throw Error('public failure');return {text:p+' response',agentCount:0};});
+  await s.post('/api/runs',{main:'codex',peers:['claude','gemini'],prompt:'public'});
+  const run=await wait(s.get,'failed');assert.deepEqual(calls,['codex','claude','gemini']);assert.equal(run.final,'');assert.equal(run.roundsCompleted,0);assert.ok(run.messages.some(m=>m.provider==='claude'&&m.text==='claude response'));
 });
 test('unobserved native subagents fail instead of roleplaying completion',async t=>{
   const s=await setup(t,async()=>({text:'I used agents',agentCount:0}));

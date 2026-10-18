@@ -30,3 +30,5 @@ body{background:var(--surface)}.app-header{height:78px;padding:0 32px;background
 .exit-button{color:#8d4242;border-color:#e3cccc}.exit-button:hover:not(:disabled){background:#fcf1f0}.shutdown-screen{position:fixed;inset:78px 0 0;z-index:10;background:var(--surface);display:grid;place-items:center;padding:30px}.shutdown-screen>div{max-width:500px;text-align:center}.shutdown-screen h2{font-size:28px;letter-spacing:-1px;margin:17px 0}.shutdown-screen p{font-size:13px;color:var(--muted);line-height:1.9;margin-top:20px}
 
 .install-button{padding:5px 10px;font-size:10px}.python-install-link{display:block;margin-top:9px;font-size:10px}
+
+.second-peer-group{margin:13px 0;border:1px solid #d5d9d0;border-radius:7px;padding:12px;background:#f8f9f5}.second-peer-group .label-row{font-size:11px}.second-peer-group textarea{width:100%;margin-top:9px;min-height:100px;padding:9px;border:1px solid #d4d8d0;border-radius:5px;background:#fafbf8;font-size:11px}.peer2-agent-settings{border-top:1px solid #d5d9d0;margin-top:14px;padding-top:12px;font-size:11px}

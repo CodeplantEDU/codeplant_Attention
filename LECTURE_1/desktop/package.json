@@ -1,7 +1,7 @@
 {
   "name": "codeplant-attention-desktop",
   "productName": "CODEPLANT ATTENTION",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "AI 대화 스튜디오 · 개인 계정으로 사용하는 데스크톱 앱",
   "author": "CODEPLANT",
   "private": true,

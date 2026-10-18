@@ -296,7 +296,7 @@ export function beginLogin(provider,cwd,onUrl,onExit){
     data=(data+chunk).slice(-16000);
     for(const match of data.matchAll(/https:\/\/[^\s<>"']+/g))try{
       const url=new URL(match[0]);
-      if(['auth.openai.com','auth0.openai.com','claude.ai','platform.claude.com','console.anthropic.com'].includes(url.hostname))onUrl(url.href);
+      if(['auth.openai.com','auth0.openai.com','claude.ai','claude.com','platform.claude.com','console.anthropic.com'].includes(url.hostname))onUrl(url.href);
     }catch{}
   }
   child.stdout.on('data',receive);child.stderr.on('data',receive);child.stdin.on('error',()=>{});child.stdin.end();

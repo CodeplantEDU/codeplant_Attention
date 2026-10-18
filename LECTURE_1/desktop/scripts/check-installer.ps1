@@ -3,6 +3,7 @@ $qaRoot = [IO.Path]::GetFullPath($env:ATTENTION_SMOKE_DIR)
 $qaEvidence = Join-Path $qaRoot 'smoke'
 New-Item -ItemType Directory -Path $qaEvidence -Force | Out-Null
 $qaInstaller = (Resolve-Path 'dist/CODEPLANT-ATTENTION-Setup.exe').Path
+$qaVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
 $qaInstall = Join-Path $qaRoot '설치 검사 #1\CODEPLANT ATTENTION'
 $qaDesktop = [Environment]::GetFolderPath('Desktop')
 $qaPrograms = [Environment]::GetFolderPath('Programs')
@@ -94,7 +95,7 @@ foreach ($qaCandidates in @(
   if ((Get-InstallerFinalPath $qaTarget) -ne (Get-InstallerFinalPath $qaExe)) { throw 'Shortcut target mismatch' }
   $qaFoundShortcuts += $qaShortcut
 }
-$qaRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -like 'CODEPLANT ATTENTION*' -and $_.DisplayVersion -eq '0.7.0' }
+$qaRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -like 'CODEPLANT ATTENTION*' -and $_.DisplayVersion -eq $qaVersion }
 if (-not $qaRegistration) { throw 'Installed-app registration missing' }
 
 $qaData = Join-Path $env:APPDATA 'codeplant-attention-desktop\data'

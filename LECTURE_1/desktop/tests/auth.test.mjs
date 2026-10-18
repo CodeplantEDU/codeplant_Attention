@@ -20,13 +20,15 @@ test('only each provider official HTTPS login URL can open outside the app',()=>
     assert.equal(loginUrl({connections:{gemini:{loginRunning:true,loginUrl:url}}},'gemini'),null);
   }
   assert.equal(loginUrl({connections:{gemini:{loginRunning:true,loginUrl:'https://accounts.google.com/auth'}}},'gemini'),'https://accounts.google.com/auth');
+  assert.equal(loginUrl({connections:{claude:{loginRunning:true,loginUrl:'https://claude.com/oauth/authorize'}}},'claude'),'https://claude.com/oauth/authorize');
+  assert.equal(loginUrl({connections:{claude:{loginRunning:true,loginUrl:'https://claude.com.evil.test/oauth/authorize'}}},'claude'),null);
   assert.throws(()=>loginUrl({},'invalid'));
 });
 
 test('setup login, browser fallback, completion, logout and cancellation use protected local API for all three providers',async t=>{
   const folder=await mkdtemp(path.join(tmpdir(),'attention-desktop-auth-'));
   const connected={},callbacks={},stops={};let modelCalls=0;
-  const urls={codex:'https://auth.openai.com/authorize',claude:'https://claude.ai/oauth/authorize',gemini:'https://accounts.google.com/o/oauth2/auth'};
+  const urls={codex:'https://auth.openai.com/authorize',claude:'https://claude.com/oauth/authorize',gemini:'https://accounts.google.com/o/oauth2/auth'};
   const app=await createService({dataDir:folder,check:async p=>({installed:true,loggedIn:Boolean(connected[p])}),login:(p,_cwd,onUrl,onExit)=>{callbacks[p]=onExit;onUrl(urls[p]);return ()=>{stops[p]=(stops[p]||0)+1;};},logout:async p=>{connected[p]=false;},cli:async()=>{modelCalls++;throw Error('Unexpected model call');}});
   t.after(async()=>{await app.close();await rm(folder,{recursive:true,force:true});});
   await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));await app.refresh();

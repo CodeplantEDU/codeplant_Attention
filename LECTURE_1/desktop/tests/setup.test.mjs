@@ -42,3 +42,19 @@ test('prepare then login uses selected AI only and existing service disables mis
   const existing=await setup({codex:{installed:false}},{usingExisting:true});
   assert.equal(existing.button('codex','login').disabled,true);
 });
+
+test('Claude current login host exposes manual browser fallback while authentication is pending',async()=>{
+  const connections={claude:{installed:true}};
+  const ui=await setup(connections);
+  await ui.button('claude','login').click();
+  connections.claude.loginRunning=true;
+  connections.claude.loginUrl='https://claude.com/oauth/authorize?state=public-test';
+  await ui.poll();
+  assert.equal(ui.button('claude','browser').hidden,false);
+  assert.equal(ui.button('claude','browser').disabled,false);
+  await ui.button('claude','browser').click();
+  assert.deepEqual(ui.actions.at(-1),['browser','claude']);
+  connections.claude.loginRunning=false;
+  await ui.poll();
+  assert.equal(ui.button('claude','browser').hidden,true);
+});

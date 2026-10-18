@@ -1,5 +1,5 @@
 const providers=['codex','claude','gemini'];
-const hosts={codex:['auth.openai.com','auth0.openai.com'],claude:['claude.ai','platform.claude.com','console.anthropic.com'],gemini:['accounts.google.com']};
+const hosts={codex:['auth.openai.com','auth0.openai.com'],claude:['claude.ai','claude.com','platform.claude.com','console.anthropic.com'],gemini:['accounts.google.com']};
 function providerId(provider){if(!providers.includes(provider))throw Error('AI를 선택하세요.');return provider;}
 export function loginUrl(state,provider){
   providerId(provider);

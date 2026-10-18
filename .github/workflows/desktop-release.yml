@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag'
         required: true
-        default: desktop-v0.6.1
+        default: desktop-v0.6.2
       runtime_run:
         description: 'Optional successful runtime build run ID (same runtime source only)'
         required: false
@@ -88,6 +88,12 @@ jobs:
         run: |
           mkdir -p runtime
           for dir in build/downloads/runtime-*; do cp -R "$dir" "runtime/${dir##*/runtime-}"; done
+          # PyInstaller bundles these source data files outside its interpreter executable.
+          # Refresh the extractor even when reusing the unchanged interpreter and libraries.
+          for extractor in runtime/*/filetools/_internal/extract.py; do
+            test -f "$extractor"
+            cp ../site/lib/extract.py "$extractor"
+          done
           if [ "${{ matrix.platform }}" = darwin ]; then
             find runtime -type f \( -name node -o -name attention-files \) -exec chmod +x {} \;
           fi

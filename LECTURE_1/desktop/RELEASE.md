@@ -1,3 +1,5 @@
+참고자료의 파일 크기·개수·추출 글자 수 및 PDF 페이지·PPTX 슬라이드 수 제한을 해제했습니다. 시작 로그인 창과 기존 계정·자료 보존도 포함합니다. 실제 처리 범위는 PC 메모리와 선택한 AI에 따라 달라집니다.
+
 Windows: `CODEPLANT-ATTENTION-Windows.exe`를 실행하세요. 별도 설치 명령은 필요 없습니다.
 
 Mac: `CODEPLANT-ATTENTION-Mac.dmg`를 열어 앱을 Applications로 옮겨 실행하세요. Apple Silicon과 Intel을 함께 지원하는 Universal 앱입니다.

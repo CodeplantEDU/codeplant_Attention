@@ -28,7 +28,6 @@ const uploadNodes = new Map();
 const uploadedFiles = new Map();
 const selectedAttachments = new Set();
 const followupDrafts = new Map();
-const uploadLimits = { bytes: 10 * 1024 * 1024, count: 5, chars: 60000 };
 const lastModelLists = new Map();
 const mainRolePresets = {
   lead: '요청의 목표를 정리하고 근거와 불확실성을 구분하여 초안을 작성하세요. 상대 AI의 의견을 수용·보류·기각한 이유를 설명하고 최종 결과물을 정리하세요.',
@@ -295,12 +294,6 @@ function selectedFiles() {
 
 function attachmentIds() { return selectedFiles().map(file => file.id); }
 
-function selectionError(files) {
-  if (files.length > uploadLimits.count) return '자료는 최대 5개까지 선택할 수 있습니다. 기존 자료의 체크를 해제해주세요.';
-  if (files.reduce((total, file) => total + Number(file.chars || 0), 0) > uploadLimits.chars) return '선택한 자료의 추출 텍스트가 60,000자를 넘습니다. 기존 자료의 체크를 해제해주세요.';
-  return '';
-}
-
 function fileSummary(file) {
   const bytes = Number(file.size || 0);
   const size = bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024).toLocaleString('ko-KR')}KB` : `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
@@ -328,9 +321,6 @@ function renderUploads() {
       card.append(label, warning, details);
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) {
-          const candidate = availableUploads().find(item => item.id === file.id);
-          const error = selectionError([...selectedFiles(), candidate].filter(Boolean));
-          if (error) { checkbox.checked = false; notice(error); return; }
           selectedAttachments.add(file.id);
         } else selectedAttachments.delete(file.id);
         updateAttachmentSummary();
@@ -356,7 +346,7 @@ function updateAttachmentSummary() {
   const count = files.length;
   const chars = files.reduce((total, file) => total + Number(file.chars || 0), 0);
   setText($('#attachment-summary'), count ? `${count}개 선택 · 추출 텍스트 ${chars.toLocaleString('ko-KR')}자` : '선택한 자료가 없습니다.');
-  setText($('#followup-attachments'), count ? `기존 자료를 유지하고, 왼쪽에서 선택한 자료 ${count}개를 추가합니다. 전체 최대 5개·60,000자입니다.` : '기존 자료와 대화 내용을 유지합니다. 추가 자료는 왼쪽에서 선택하세요.');
+  setText($('#followup-attachments'), count ? `기존 자료를 유지하고, 왼쪽에서 선택한 자료 ${count}개를 추가합니다.` : '기존 자료와 대화 내용을 유지합니다. 추가 자료는 왼쪽에서 선택하세요.');
 }
 
 function renderRunAttachments(run) {
@@ -464,14 +454,10 @@ async function uploadFiles(files) {
       setText(status, `${index + 1}/${files.length} · ${file.name} 업로드 중…`);
       try {
         if (!/\.(txt|md|csv|json|pdf|docx|pptx)$/i.test(file.name)) throw new Error('지원하지 않는 파일 형식입니다.');
-        if (file.size > uploadLimits.bytes) throw new Error('파일당 10MB까지 추가할 수 있습니다.');
-        if (selectedFiles().length >= uploadLimits.count) throw new Error('자료를 최대 5개까지 선택했습니다. 체크를 해제한 뒤 다시 추가해주세요.');
         const result = await request('/api/uploads', { name: file.name, base64: await readBase64(file) });
         if (!result.id) throw new Error('업로드 결과를 확인하지 못했습니다.');
         uploadedFiles.set(result.id, result);
-        const error = selectionError([...selectedFiles(), result]);
-        if (error) errors.push(`${file.name}: 파일은 저장했지만 선택하지 않았습니다. ${error}`);
-        else selectedAttachments.add(result.id);
+        selectedAttachments.add(result.id);
         renderUploads();
       } catch (error) { errors.push(`${file.name}: ${error.message || '업로드하지 못했습니다.'}`); }
     }

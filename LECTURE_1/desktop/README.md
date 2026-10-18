@@ -1,12 +1,12 @@
 # ATTENTION 데스크톱 앱
 
-[Windows 실행 파일](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Windows.exe) · [Mac 앱](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Mac.dmg)
+[Windows 실행 파일](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Windows.exe) · [Mac 앱](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Mac.dmg)
 
 [실제 패키지 검수 결과와 SHA256](검수결과.md)
 
 Windows x64용 포터블 EXE와 Mac Apple Silicon·Intel용 Universal DMG를 배포합니다. Mac 앱은 macOS 13 이상을 기준으로 합니다. Windows는 Windows 10 22H2 이상을 기준으로 합니다.
 
-> 아래 시작 화면 변경은 0.6.1 소스에 반영됐으며, 새 EXE/DMG 빌드·배포는 검증 후 진행합니다. 위 다운로드는 현재 배포된 0.6.0입니다.
+> 0.6.2는 시작 로그인 창을 표시하고 참고자료의 크기·개수·추출 글자 수 제한을 해제합니다. 이전 앱이 켜져 있으면 종료한 뒤 새 파일을 실행하세요. 기존 계정과 data는 그대로 사용합니다.
 
 ## 사용하기
 

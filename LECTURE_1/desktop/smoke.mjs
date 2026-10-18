@@ -35,6 +35,9 @@ export async function runSmoke({resources,base,window,setup,local}){
   const state=await fetch(local+'/api/state').then(r=>r.json());
   const uploaded=await fetch(local+'/api/uploads',{method:'POST',headers:{'content-type':'application/json','x-local-token':state.token},body:JSON.stringify({name:'실행앱_공개검증.txt',base64:Buffer.from('공개 검증 자료입니다.').toString('base64')})});
   assert.equal(uploaded.status,201);
+  const large='A'.repeat(10*1024*1024+1)+'REFERENCE-END';
+  const largeUpload=await fetch(local+'/api/uploads',{method:'POST',headers:{'content-type':'application/json','x-local-token':state.token},body:JSON.stringify({name:'large-public-reference.txt',base64:Buffer.from(large).toString('base64')})});
+  assert.equal(largeUpload.status,201);assert.equal((await largeUpload.json()).chars,large.length);
   const screenshot=await capture(window);await writeFile(path.join(folder,'desktop.png'),screenshot.toPNG());
-  await writeFile(path.join(folder,'result.json'),JSON.stringify({ok:true,platform:process.platform,arch:process.arch,checks:['startup-login-screen','three-provider-login-controls','requires-connected-account','sanitized-setup-state','first-run-ui','preload-ipc','reject-invalid-provider','packaged-ui','bundled-node-server','upload','docx','pdf','pptx','xlsx','pdf-text-extraction'],realModelCall:false},null,2));
+  await writeFile(path.join(folder,'result.json'),JSON.stringify({ok:true,platform:process.platform,arch:process.arch,checks:['startup-login-screen','three-provider-login-controls','requires-connected-account','sanitized-setup-state','first-run-ui','preload-ipc','reject-invalid-provider','packaged-ui','bundled-node-server','upload','reference-over-10mb-and-60000-characters','docx','pdf','pptx','xlsx','pdf-text-extraction'],realModelCall:false},null,2));
 }

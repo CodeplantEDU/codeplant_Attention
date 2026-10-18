@@ -2,9 +2,9 @@
 
 **공개 사이트: [codeplant-attention.vercel.app](https://codeplant-attention.vercel.app/)**
 
-**바로 실행하는 앱:** [Windows EXE](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Windows.exe) · [Mac DMG · Apple Silicon/Intel](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/desktop-v0.6.0/CODEPLANT-ATTENTION-Mac.dmg)
+**바로 실행하는 앱:** [Windows EXE](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Windows.exe) · [Mac DMG · Apple Silicon/Intel](https://github.com/CodeplantEDU/codeplant_Attention/releases/latest/download/CODEPLANT-ATTENTION-Mac.dmg)
 
-앱을 열고 사용할 AI를 선택해 **선택한 AI 준비 → 대화 화면 열기 → 본인 계정 로그인** 순서로 시작합니다. Node·Python·CLI를 터미널에서 수동 설치할 필요가 없습니다. 처음에는 공식 AI 도구를 자동 다운로드하므로 인터넷이 필요합니다. [앱 사용법·실행 차단 안내](LECTURE_1/desktop/README.md)
+앱을 열면 **AI 로그인** 창이 먼저 뜹니다. 사용할 AI의 **로그인** 또는 **준비 후 로그인**을 누르고, 공식 브라우저에서 인증한 뒤 **대화 시작**을 누릅니다. Node·Python·CLI를 터미널에서 수동 설치할 필요가 없습니다. 처음에는 공식 AI 도구를 자동 다운로드하므로 인터넷이 필요합니다. [앱 사용법·실행 차단 안내](LECTURE_1/desktop/README.md)
 
 각자 PC에서 실행 앱을 열거나 아래 수동 설치를 마친 뒤 로컬 화면의 **공개 웹사이트 연결 관리 → 웹 연결 코드 발급**을 사용합니다. 공개 사이트에 코드를 입력하면 본인의 Codex·Claude·Gemini 계정으로 사용할 수 있습니다. AI 로그인과 자료·대화·생성 파일은 각자의 PC에서 처리합니다. [PC 연결 사용법](LECTURE_1/site/README.md#vercel-공개-화면--본인-pc-연결)
 

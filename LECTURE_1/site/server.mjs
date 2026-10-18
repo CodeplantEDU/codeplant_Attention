@@ -191,7 +191,8 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   async function jsonBody(req){
     if(!String(req.headers['content-type']).startsWith('application/json'))throw fail(415,'JSON 요청이 필요합니다.');
     let size=0;const parts=[];
-    const limit=req.url==='/api/uploads'?14000000:200000;
+    const referenceRequest=req.url==='/api/uploads'||req.url==='/api/runs'||/^\/api\/runs\/[a-f0-9-]{36}\/messages$/.test(req.url);
+    const limit=referenceRequest?Infinity:200000;
     for await(const part of req){size+=part.length;if(size>limit)throw fail(413,'요청이 너무 큽니다.');parts.push(part);}
     try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw fail(400,'JSON 내용을 확인하세요.');}
   }

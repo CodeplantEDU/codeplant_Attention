@@ -7,8 +7,6 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-MAX_CHARS = 60000
-
 
 def extract(data, suffix):
     warning = ""
@@ -22,17 +20,11 @@ def extract(data, suffix):
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
             raise ValueError("암호가 없는 PDF로 저장한 뒤 올려주세요.")
-        if len(reader.pages) > 300:
-            raise ValueError("PDF는 300페이지 이하로 나눠주세요.")
         pages = []
         empty = 0
-        count = 0
         for i, page in enumerate(reader.pages, 1):
             content = page.extract_text() or ""
             empty += not bool(content.strip())
-            count += len(content)
-            if count > MAX_CHARS:
-                raise ValueError("추출 문자는 60,000자까지입니다. 필요한 부분으로 나눠주세요.")
             pages.append(f"[페이지 {i}]\n{content}")
         text = "\n\n".join(pages)
         if empty == len(pages):
@@ -48,8 +40,8 @@ def extract(data, suffix):
             names = ["word/document.xml"] if suffix == ".docx" else sorted(
                 [x for x in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", x)],
                 key=lambda x: int(re.search(r"slide(\d+)\.xml", x).group(1)))
-            if not names or len(names) > 300:
-                raise ValueError("읽을 본문이 없거나 슬라이드가 300개를 초과했습니다.")
+            if not names:
+                raise ValueError("읽을 본문이 없습니다.")
             blocks = []
             for i, name in enumerate(names, 1):
                 xml = archive.read(name)
@@ -73,8 +65,6 @@ def extract(data, suffix):
     text = text.strip()
     if not text or not re.sub(r"\[(페이지|슬라이드) \d+\]", "", text).strip():
         raise ValueError("읽을 수 있는 본문 텍스트가 없습니다.")
-    if len(text) > MAX_CHARS:
-        raise ValueError("추출 문자는 60,000자까지입니다. 필요한 부분으로 나눠주세요.")
     return {"text": text, "warning": warning}
 
 

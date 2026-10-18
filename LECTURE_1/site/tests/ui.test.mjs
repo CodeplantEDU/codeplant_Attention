@@ -254,3 +254,19 @@ test('disabled model choices stay unavailable after lookup failure without repla
   assert.equal(custom.hidden,false);
   assert.equal(helpers.readSelectedModel('codex'),'explicit-custom-model');
 });
+
+
+test('upload handler accepts six large reference files while retaining all previous selections',async()=>{
+  const start=source.indexOf('async function uploadFiles(files) {'),end=source.indexOf('function updateControls()',start);
+  const uploadedFiles=new Map(),selectedAttachments=new Set(['old-1','old-2','old-3','old-4','old-5','old-6']);
+  const requests=[],notices=[],status={hidden:true,textContent:''},input={value:'selected'};
+  const context={uploading:false,currentState:{token:'fixture'},uploadedFiles,selectedAttachments,
+    $:selector=>selector==='#upload-status'?status:input,setText:(node,text)=>{node.textContent=text;},
+    selectedFiles:()=>Array.from(selectedAttachments).map(id=>({id,chars:100000})),
+    updateControls(){},renderUploads(){},refresh:async()=>{},notice:(...args)=>notices.push(args),readBase64:async()=> 'Zml4dHVyZQ==',
+    request:async(route,body)=>{requests.push({route,body});return {id:'new-'+requests.length,chars:100000};}};
+  vm.createContext(context);vm.runInContext(source.slice(start,end),context);
+  await context.uploadFiles(Array.from({length:6},(_,i)=>({name:`large-${i}.txt`,size:20*1024*1024})));
+  assert.equal(requests.length,6);assert.equal(selectedAttachments.size,12);assert.equal(uploadedFiles.size,6);
+  assert.equal(notices.at(-1)[1],true);assert.equal(status.hidden,true);assert.equal(context.uploading,false);
+});

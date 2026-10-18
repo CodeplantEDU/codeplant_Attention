@@ -103,9 +103,9 @@ test('upload reference is passed to both AIs; followup preserves history without
   assert.ok(calls.slice(3).every(c=>!c.roles.length));assert.equal(continued.attachments[0].id,file.id);
   const exported=await fetch(s.url+`/api/runs/${id}/export`).then(r=>r.text());assert.match(exported,/수업자료.md/);assert.match(exported,/추가 지시/);
 });
-test('uploads reject invalid types, malformed data, oversized text and unknown references',async t=>{
+test('uploads reject invalid types, malformed data and unknown references',async t=>{
   const s=await setup(t,async()=>({text:'ok',agentCount:0}));
-  for(const body of [{name:'a.exe',base64:'YWJj'},{name:'a.txt',base64:'!!!!'},{name:'a.pdf',base64:Buffer.from('not pdf').toString('base64')},{name:'a.md',base64:Buffer.from('x'.repeat(60001)).toString('base64')}]){
+  for(const body of [{name:'a.exe',base64:'YWJj'},{name:'a.txt',base64:'!!!!'},{name:'a.pdf',base64:Buffer.from('not pdf').toString('base64')}]){
     assert.equal((await s.post('/api/uploads',body)).status,400);
   }
   assert.equal((await s.post('/api/runs',{prompt:'test',main:'codex',peer:'claude',rounds:1,attachmentIds:['../../secret']})).status,400);

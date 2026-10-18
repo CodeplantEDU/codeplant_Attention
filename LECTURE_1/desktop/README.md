@@ -10,6 +10,8 @@ Windows x64용 설치 마법사 EXE와 Mac Apple Silicon·Intel용 Universal DMG
 
 ## 사용하기
 
+Claude 인증 브라우저가 자동으로 열리지 않으면, 로그인 시작 후 표시되는 **로그인 화면 열기** 버튼을 누르세요. Windows 0.7.1부터 Claude CLI의 `claude.com` 인증 주소도 인식합니다.
+
 1. Windows는 **CODEPLANT-ATTENTION-Setup.exe**를 실행해 설치 위치를 선택하고 설치를 마칩니다. 다음부터 바탕화면·시작 메뉴의 **CODEPLANT ATTENTION**을 엽니다. Mac은 DMG를 열어 앱을 Applications로 옮긴 뒤 실행합니다.
 2. 실행하면 **AI 로그인** 창이 먼저 열립니다. 사용할 AI의 **로그인**을 누릅니다. 도구가 없으면 **준비 후 로그인**을 누르면 됩니다. 앱이 공식 CLI를 전용 폴더에 다운로드하므로 Node·Python을 따로 설치할 필요는 없습니다.
 3. 브라우저의 공식 인증 화면에서 본인 계정으로 로그인합니다. 창이 안 열리면 앱의 **로그인 화면 열기**를 누릅니다. 하나만 연결해도 **대화 시작**이 활성화됩니다. 이미 로그인된 계정은 다시 로그인하지 않아도 됩니다.

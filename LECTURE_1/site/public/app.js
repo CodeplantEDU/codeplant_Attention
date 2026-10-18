@@ -523,15 +523,23 @@ function renderConnections() {
     renderModelOptions(provider, connection);
     const card = $(`[data-provider="${provider}"]`);
     const badge = $('.connection-badge', card);
-    const state = connection.loginRunning ? '로그인 중' : connection.loggedIn ? '연결됨' : connection.installed ? '로그인 필요' : '미설치';
+    const state = connection.logoutRunning ? '로그아웃 중' : connection.loginRunning ? '로그인 중' : connection.loggedIn ? '연결됨' : connection.installed ? '로그인 필요' : '미설치';
     setText(badge, state);
     badge.className = `connection-badge badge ${connection.loggedIn ? 'good' : connection.loginRunning ? 'busy' : 'neutral'}`;
     setText($('.connection-message', card), connection.message || (connection.loggedIn ? '로그인된 계정으로 대화할 준비가 됐습니다.' : connection.installed ? '로그인을 마친 뒤 새로 확인을 눌러주세요.' : 'CLI 설치가 필요합니다. 설치 안내를 확인하세요.'));
     setText($('.connection-version', card), connection.version || '');
     const login = $('.login-button', card);
     login.hidden = !connection.installed || connection.loggedIn;
-    login.disabled = connection.loginRunning || actionPending;
+    login.disabled = connection.loginRunning || connection.logoutRunning || actionPending || Boolean(currentState.activeRunId);
     setText(login, connection.loginRunning ? '로그인 진행 중' : '로그인');
+    const logout = $('[data-logout]', card);
+    if (logout) {
+      logout.hidden = !connection.loggedIn || connection.loginRunning;
+      logout.disabled = connection.logoutRunning || actionPending || Boolean(currentState.activeRunId);
+      setText(logout, connection.logoutRunning ? '로그아웃 중' : '로그아웃');
+    }
+    const cancel = $('[data-cancel-login]', card);
+    if (cancel) { cancel.hidden = !connection.loginRunning; cancel.disabled = actionPending; }
     const link = $('.login-link', card);
     let safeUrl = null;
     try {
@@ -799,7 +807,15 @@ $('#check-connections').addEventListener('click', () => action(async () => {
 }));
 document.querySelectorAll('[data-login]').forEach(button => button.addEventListener('click', () => action(async () => {
   await request('/api/login', { provider: button.dataset.login });
-  notice('로그인을 시작했습니다. 열리는 인증 화면에서 로그인한 뒤 연결 상태를 확인해주세요. Gemini는 터미널에서 Sign in with Google을 선택하고, 완료 후 터미널을 닫거나 새로 확인을 누르세요.', true);
+  notice('로그인을 시작했습니다. 열린 브라우저에서 본인 계정으로 완료하세요. 완료하면 연결 상태가 자동으로 바뀝니다.', true);
+})));
+document.querySelectorAll('[data-cancel-login]').forEach(button => button.addEventListener('click', () => action(async () => {
+  await request('/api/login/cancel', { provider: button.dataset.cancelLogin });
+  notice('로그인을 취소했습니다. 다시 로그인할 수 있습니다.', true);
+})));
+document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', () => action(async () => {
+  await request('/api/logout', { provider: button.dataset.logout });
+  notice('Gemini에서 로그아웃했습니다. 로그인 버튼으로 다른 Google 계정을 연결할 수 있습니다.', true);
 })));
 
 connectRoleEditor('main', mainRolePresets);

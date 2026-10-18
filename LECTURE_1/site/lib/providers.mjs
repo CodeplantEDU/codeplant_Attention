@@ -36,7 +36,7 @@ export function executable(provider,env=process.env){
 export function loginEnvironment(){
   const env={...process.env};
   // Subscription logins remain in the official CLIs; never copy their credentials.
-  for(const k of ['OPENAI_API_KEY','CODEX_API_KEY','ANTHROPIC_API_KEY','CLAUDE_CODE_SIMPLE','GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_APPLICATION_CREDENTIALS','GOOGLE_GENAI_USE_VERTEXAI'])delete env[k];
+  for(const k of ['OPENAI_API_KEY','CODEX_API_KEY','ANTHROPIC_API_KEY','CLAUDE_CODE_SIMPLE','GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_APPLICATION_CREDENTIALS','GOOGLE_GENAI_USE_VERTEXAI','GOOGLE_GENAI_USE_GCA','GOOGLE_CLOUD_ACCESS_TOKEN'])delete env[k];
   return env;
 }
 export function geminiEnvironment(){return {...loginEnvironment(),GEMINI_CLI_NO_RELAUNCH:'true',GEMINI_CLI_SYSTEM_SETTINGS_PATH:fileURLToPath(new URL('./gemini-settings.json',import.meta.url))};}
@@ -268,12 +268,21 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
 
 export function beginLogin(provider,cwd,onUrl,onExit){
   if(provider==='gemini'){
-    const quote=s=>"'"+s.replaceAll("'","''")+"'";
-    const command=`& ${quote(process.execPath)} ${quote(geminiEntrypoint())}`;
-    const encoded=Buffer.from(command,'utf16le').toString('base64');
-    const launch=`$p=Start-Process powershell.exe -ArgumentList '-NoProfile','-NoExit','-EncodedCommand','${encoded}' -WorkingDirectory ${quote(cwd)} -WindowStyle Normal -PassThru; $p.WaitForExit()`;
-    const child=spawn('powershell.exe',['-NoProfile','-EncodedCommand',Buffer.from(launch,'utf16le').toString('base64')],{cwd,env:loginEnvironment(),windowsHide:true,stdio:'ignore',shell:false});
-    child.on('error',()=>onExit(false));child.on('close',()=>onExit(geminiHasLogin()));
+    const child=spawn(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'login'],{cwd,env:geminiEnvironment(),windowsHide:true,shell:false});
+    let buffer='',finished=false;
+    const finish=(ok,message)=>{if(finished)return;finished=true;clearTimeout(timer);onExit(ok,message);};
+    const timer=setTimeout(()=>{kill(child);finish(false,'Google 로그인 시간이 초과됐습니다. 다시 로그인하세요.');},300000);
+    child.stdout.setEncoding('utf8');child.stdout.on('data',chunk=>{
+      buffer=(buffer+chunk).slice(-32000);let nl;
+      while((nl=buffer.indexOf('\n'))>=0){
+        const line=buffer.slice(0,nl);buffer=buffer.slice(nl+1);
+        try{const event=JSON.parse(line);if(event.url&&new URL(event.url).hostname==='accounts.google.com')onUrl(event.url);}catch{}
+      }
+    });
+    child.stderr.on('data',()=>{});
+    child.stdin.on('error',()=>{});child.stdin.end('y\n');
+    child.on('error',()=>finish(false,'Gemini 인증 프로그램을 시작하지 못했습니다.'));
+    child.on('close',code=>finish(code===0,code===0?'Google 로그인이 완료됐습니다.':'Google 로그인을 완료하지 못했습니다. 다시 로그인하세요.'));
     return ()=>kill(child);
   }
   const args=provider==='codex'?['login']:['auth','login','--claudeai'];
@@ -290,4 +299,10 @@ export function beginLogin(provider,cwd,onUrl,onExit){
   child.on('error',()=>{clearTimeout(timer);onExit(false);});
   child.on('close',code=>{clearTimeout(timer);onExit(code===0);});
   return ()=>kill(child);
+}
+
+export async function logoutCLI(provider,cwd){
+  if(provider!=='gemini')throw Error('현재 Gemini 로그아웃을 지원합니다.');
+  const result=await capture(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd});
+  if(result.code!==0||geminiHasLogin())throw Error('Gemini 로그아웃에 실패했습니다. CLI 설치와 인증 파일 권한을 확인하세요.');
 }

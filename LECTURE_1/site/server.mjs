@@ -3,7 +3,7 @@ import {readFile,writeFile,rename,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID,randomBytes,timingSafeEqual} from 'node:crypto';
-import {connection,runCLI,beginLogin} from './lib/providers.mjs';
+import {connection,runCLI,beginLogin,logoutCLI} from './lib/providers.mjs';
 import {openUploads} from './lib/uploads.mjs';
 import {requestedFormats,fileInstructions,parseFilePackage,createFiles,readGenerated} from './lib/files.mjs';
 
@@ -55,7 +55,7 @@ function renderExport(run){
     `\n## 최종 답변\n\n${run.final||'완료된 최종 답변이 없습니다.'}\n`;
 }
 
-export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin}={}){
+export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI}={}){
   await mkdir(dataDir,{recursive:true});
   const uploads=await openUploads(dataDir);
   const stateFile=path.join(dataDir,'runs.json');let runs=[];
@@ -67,6 +67,8 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   const token=randomBytes(32).toString('hex');let active=null,writing=Promise.resolve(),saveTimer=null,closed=false;
   let connections=Object.fromEntries(providers.map(p=>[p,{installed:false,loggedIn:false,message:'확인 중',version:'',loginRunning:false}]));
   const loginStops=new Map();
+  const authMessages=new Map();
+  let logoutRunning=false;
   function save(){
     const snapshot=JSON.stringify(runs,null,2);
     writing=writing.catch(()=>{}).then(async()=>{const tmp=stateFile+'.tmp';await writeFile(tmp,snapshot,'utf8');await rename(tmp,stateFile);});
@@ -83,7 +85,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   }
   async function refresh(){
     const result=await Promise.all(providers.map(async p=>[p,await check(p,root)]));
-    for(const [p,c] of result){const old=connections[p];connections[p]={...c,...(old.loginRunning?{loginRunning:true,loginUrl:old.loginUrl,message:'브라우저에서 본인 로그인을 완료하세요.'}:{})};}
+    for(const [p,c] of result){const old=connections[p];connections[p]={loginRunning:false,...c,...(authMessages.has(p)?{message:authMessages.get(p)}:{}),...(old.loginRunning?{loginRunning:true,loginUrl:old.loginUrl,message:'브라우저에서 본인 로그인을 완료하세요.'}:{}),logoutRunning:old.logoutRunning||false};}
     return connections;
   }
   function onActivity(run,provider,stage,e){
@@ -212,17 +214,43 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
         if(url.pathname==='/api/connections/check'){await refresh();return json(200,{ok:true});}
         if(url.pathname==='/api/login'){
           const p=body.provider;if(!providers.includes(p))throw fail(400,'AI를 선택하세요.');
+          if(active||logoutRunning)throw fail(409,'진행 중인 작업 또는 로그아웃을 마친 뒤 로그인하세요.');
           if(connections[p].loginRunning)return json(200,{ok:true});
           if(connections[p].loggedIn)return json(200,{ok:true,alreadyLoggedIn:true});
+          authMessages.delete(p);
           connections[p].loginRunning=true;connections[p].message='브라우저에서 본인 로그인을 완료하세요.';
+          const operation={stop:()=>{}};loginStops.set(p,operation);
           try{
-            const stop=login(p,root,url=>{connections[p].loginUrl=url;},async()=>{
-              loginStops.delete(p);connections[p].loginRunning=false;delete connections[p].loginUrl;await refresh();
-            });loginStops.set(p,stop);
-          }catch{connections[p].loginRunning=false;throw fail(400,'로그인을 시작하지 못했습니다. CLI 설치를 확인하세요.');}
+            operation.stop=login(p,root,url=>{if(loginStops.get(p)===operation)connections[p].loginUrl=url;},async(ok,message)=>{
+              if(loginStops.get(p)!==operation)return;
+              loginStops.delete(p);connections[p].loginRunning=false;delete connections[p].loginUrl;
+              if(!ok)authMessages.set(p,message||'로그인을 완료하지 못했습니다. 다시 시도하세요.');
+              try{await refresh();}catch{connections[p].message='연결 확인에 실패했습니다. 새로 확인을 눌러주세요.';}
+            });
+          }catch{loginStops.delete(p);connections[p].loginRunning=false;throw fail(400,'로그인을 시작하지 못했습니다. CLI 설치를 확인하세요.');}
           return json(202,{ok:true});
         }
+        if(url.pathname==='/api/login/cancel'){
+          const p=body.provider;if(!providers.includes(p))throw fail(400,'AI를 선택하세요.');
+          const operation=loginStops.get(p);loginStops.delete(p);operation?.stop();
+          connections[p].loginRunning=false;delete connections[p].loginUrl;
+          authMessages.set(p,'로그인을 취소했습니다. 다시 로그인할 수 있습니다.');await refresh();
+          return json(200,{ok:true});
+        }
+        if(url.pathname==='/api/logout'){
+          const p=body.provider;if(p!=='gemini')throw fail(400,'현재 Gemini 로그아웃을 지원합니다.');
+          if(active||logoutRunning)throw fail(409,'진행 중인 작업을 마친 뒤 로그아웃하세요.');
+          const operation=loginStops.get(p);loginStops.delete(p);operation?.stop();
+          connections[p].loginRunning=false;delete connections[p].loginUrl;
+          logoutRunning=true;connections[p].logoutRunning=true;
+          try{
+            await logout(p,root);authMessages.set(p,'로그아웃했습니다. Google 계정으로 다시 로그인할 수 있습니다.');
+          }catch{authMessages.set(p,'로그아웃에 실패했습니다. 인증 파일 권한과 CLI 설치를 확인하세요.');throw fail(400,authMessages.get(p));}
+          finally{logoutRunning=false;connections[p].logoutRunning=false;await refresh();}
+          return json(200,{ok:true});
+        }
         if(url.pathname==='/api/runs'){
+          if(loginStops.size||logoutRunning)throw fail(409,'로그인·로그아웃 처리를 마친 뒤 시작하세요.');
           if(active)throw fail(409,'진행 중인 작업을 마치거나 중지하세요.');
           const settings=validateRun(body),id=randomUUID();
           if(!connections[settings.main].loggedIn)throw fail(409,'선택한 메인 AI의 로그인을 확인하세요.');
@@ -236,6 +264,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
         }
         const followup=url.pathname.match(/^\/api\/runs\/([a-f0-9-]{36})\/messages$/);
         if(followup){
+          if(loginStops.size||logoutRunning)throw fail(409,'로그인·로그아웃 처리를 마친 뒤 이어가세요.');
           if(active)throw fail(409,'진행 중인 작업을 마치거나 중지하세요.');
           const run=runs.find(r=>r.id===followup[1]);if(!run)throw fail(404,'작업을 찾지 못했습니다.');
           if(typeof body.message!=='string'||!body.message.trim()||body.message.length>20000)throw fail(400,'추가 지시는 1~20,000자로 입력하세요.');
@@ -283,7 +312,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   });
   server.requestTimeout=30000;server.headersTimeout=10000;
   await save();
-  return {server,refresh,async close(){if(closed)return;closed=true;active?.controller.abort();for(const stop of loginStops.values())stop();if(saveTimer)clearTimeout(saveTimer);await save().catch(()=>{});await new Promise(resolve=>server.close(resolve));},get runs(){return runs;}};
+  return {server,refresh,async close(){if(closed)return;closed=true;active?.controller.abort();for(const operation of loginStops.values())operation.stop();loginStops.clear();if(saveTimer)clearTimeout(saveTimer);await save().catch(()=>{});await new Promise(resolve=>server.close(resolve));},get runs(){return runs;}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const service=await createService();const port=Number(process.env.DIALOGUE_PORT||49321);

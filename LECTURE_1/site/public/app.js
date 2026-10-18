@@ -854,12 +854,12 @@ $('#bridge-connect').addEventListener('click', async () => {
   const button = $('#bridge-connect');button.disabled = true;
   setText($('#bridge-status'), '이 PC의 연결 프로그램에 접속합니다…');
   try {
-    const response = await fetch(apiBase + '/api/bridge/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#bridge-code').value.trim() }), targetAddressSpace: 'local' });
+    const response = await fetch(apiBase + '/api/bridge/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: $('#bridge-code').value.trim() }), targetAddressSpace: 'local', signal: AbortSignal.timeout(15000) });
     const data = await response.json();if (!response.ok) throw new Error(data.error || '연결 코드를 확인하세요.');
     sessionStorage.setItem('attention-bridge-token', data.token);bridgeToken = data.token;$('#bridge-code').value = '';
     $('#bridge-disconnect').hidden = false;setText($('#bridge-status'), '내 PC에 연결했습니다. 오른쪽에서 본인의 AI 계정을 로그인하세요.');
     setText($('.local-label'), '내 PC에 연결됨');await poll();
-  } catch (error) { setText($('#bridge-status'), error instanceof TypeError ? '연결 프로그램 실행과 브라우저의 로컬 네트워크 접근 허용을 확인하세요.' : error.message); }
+  } catch (error) { setText($('#bridge-status'), error instanceof TypeError || error.name === 'TimeoutError' ? '연결 프로그램 실행과 브라우저의 로컬 네트워크 접근 허용을 확인한 뒤 다시 연결하세요.' : error.message); }
   finally { button.disabled = false; }
 });
 $('#bridge-disconnect').addEventListener('click', async () => { try { await request('/api/bridge/disconnect', {}); } finally { sessionStorage.removeItem('attention-bridge-token');location.reload(); } });

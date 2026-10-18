@@ -10,12 +10,16 @@ on:
         description: 'Optional successful runtime build run ID (same runtime source only)'
         required: false
         default: ''
+      package_run:
+        description: 'Optional successful package run ID for native Intel verification and release'
+        required: false
+        default: ''
 permissions:
   contents: write
   actions: read
 jobs:
   runtime:
-    if: ${{ inputs.runtime_run == '' }}
+    if: ${{ inputs.runtime_run == '' && inputs.package_run == '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +57,7 @@ jobs:
           retention-days: 5
   package:
     needs: runtime
-    if: ${{ always() && (needs.runtime.result == 'success' || (needs.runtime.result == 'skipped' && inputs.runtime_run != '')) }}
+    if: ${{ always() && inputs.package_run == '' && (needs.runtime.result == 'success' || (needs.runtime.result == 'skipped' && inputs.runtime_run != '')) }}
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +135,7 @@ jobs:
             LECTURE_1/desktop/dist/CODEPLANT-ATTENTION-Mac.dmg
   mac-intel:
     needs: package
+    if: ${{ always() && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
     runs-on: macos-15-intel
     steps:
       - uses: actions/setup-node@v4
@@ -140,6 +145,8 @@ jobs:
         with:
           name: app-darwin
           path: app-files
+          run-id: ${{ inputs.package_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Run the universal app on an Intel Mac
         shell: bash
         env:
@@ -166,6 +173,7 @@ jobs:
           path: smoke-output-intel/smoke
   release:
     needs: [package, mac-intel]
+    if: ${{ always() && needs.mac-intel.result == 'success' && (needs.package.result == 'success' || (needs.package.result == 'skipped' && inputs.package_run != '')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -174,6 +182,8 @@ jobs:
           pattern: app-*
           path: release-files
           merge-multiple: true
+          run-id: ${{ inputs.package_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Publish executable files
         env:
           GH_TOKEN: ${{ github.token }}

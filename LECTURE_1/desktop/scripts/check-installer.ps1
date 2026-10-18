@@ -36,6 +36,19 @@ $qaSetup = Start-Process -FilePath $qaInstaller -ArgumentList @('/S','/currentus
 if ($qaSetup.ExitCode -ne 0) { throw "Installer exit: $($qaSetup.ExitCode)" }
 $qaExe = Join-Path $qaInstall 'CODEPLANT ATTENTION.exe'
 if (-not (Test-Path -LiteralPath $qaExe)) { throw 'Installed executable missing' }
+# Confirm the installed app needs no globally installed Node, Python or AI CLI.
+$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+$qaApp = Start-Process -FilePath $qaExe -ArgumentList '--smoke-test' -PassThru
+for ($qaTry=0; $qaTry -lt 90; $qaTry++) {
+  if ((Test-Path (Join-Path $qaEvidence 'result.json')) -or (Test-Path (Join-Path $qaEvidence 'error.json'))) { break }
+  Start-Sleep -Seconds 2
+}
+if (Test-Path (Join-Path $qaEvidence 'error.json')) { throw (Get-Content (Join-Path $qaEvidence 'error.json') -Raw) }
+$qaResult = Get-Content (Join-Path $qaEvidence 'result.json') -Raw | ConvertFrom-Json
+if (-not $qaResult.ok) { throw 'Installed app smoke failed' }
+if (-not $qaApp.WaitForExit(10000)) { throw 'Installed app did not exit after verification' }
+
+
 Add-Type -TypeDefinition @"
 using System;
 using System.Text;
@@ -62,25 +75,15 @@ foreach ($qaCandidates in @(
 )) {
   $qaShortcut = $qaCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if (-not $qaShortcut) { throw ('Shortcut missing from profile: '+($qaCandidates -join ', ')) }
-  $qaTarget = $qaShortcutShell.CreateShortcut($qaShortcut).TargetPath
+  $qaAsciiLink = Join-Path $qaEvidence ('shortcut-'+$qaFoundShortcuts.Count+'.lnk')
+  Copy-Item -LiteralPath $qaShortcut -Destination $qaAsciiLink -Force
+  $qaTarget = $qaShortcutShell.CreateShortcut([string]$qaAsciiLink).TargetPath
   @{shortcut=$qaShortcut;target=$qaTarget;expected=$qaExe} | ConvertTo-Json | Add-Content (Join-Path $qaEvidence 'shortcut-paths.jsonl') -Encoding utf8
   if ((Get-InstallerFinalPath $qaTarget) -ne (Get-InstallerFinalPath $qaExe)) { throw 'Shortcut target mismatch' }
   $qaFoundShortcuts += $qaShortcut
 }
 $qaRegistration = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object { $_.DisplayName -like 'CODEPLANT ATTENTION*' -and $_.DisplayVersion -eq '0.7.0' }
 if (-not $qaRegistration) { throw 'Installed-app registration missing' }
-
-# Confirm the installed app needs no globally installed Node, Python or AI CLI.
-$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-$qaApp = Start-Process -FilePath $qaExe -ArgumentList '--smoke-test' -PassThru
-for ($qaTry=0; $qaTry -lt 90; $qaTry++) {
-  if ((Test-Path (Join-Path $qaEvidence 'result.json')) -or (Test-Path (Join-Path $qaEvidence 'error.json'))) { break }
-  Start-Sleep -Seconds 2
-}
-if (Test-Path (Join-Path $qaEvidence 'error.json')) { throw (Get-Content (Join-Path $qaEvidence 'error.json') -Raw) }
-$qaResult = Get-Content (Join-Path $qaEvidence 'result.json') -Raw | ConvertFrom-Json
-if (-not $qaResult.ok) { throw 'Installed app smoke failed' }
-if (-not $qaApp.WaitForExit(10000)) { throw 'Installed app did not exit after verification' }
 
 $qaData = Join-Path $env:APPDATA 'codeplant-attention-desktop\data'
 New-Item -ItemType Directory -Path $qaData -Force | Out-Null

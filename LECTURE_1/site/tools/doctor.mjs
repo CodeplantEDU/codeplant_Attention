@@ -1,6 +1,12 @@
 import {spawnSync} from 'node:child_process';
 import {connection} from '../lib/providers.mjs';
 import {pythonExecutable} from '../lib/python.mjs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {adoptLocalTools,adoptDocumentTools} from '../lib/install.mjs';
+
+const dataDir=path.join(fileURLToPath(new URL('..',import.meta.url)),'.local-data');
+adoptLocalTools(dataDir);adoptDocumentTools(dataDir);
 
 console.log('ATTENTION / 실행 환경 확인');
 console.log('Node.js '+process.versions.node+(Number(process.versions.node.split('.')[0])>=22?' · 사용 가능':' · 22 이상으로 업데이트 필요'));

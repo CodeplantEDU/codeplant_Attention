@@ -28,3 +28,5 @@ body{background:var(--surface)}.app-header{height:78px;padding:0 32px;background
 @media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}
 
 .exit-button{color:#8d4242;border-color:#e3cccc}.exit-button:hover:not(:disabled){background:#fcf1f0}.shutdown-screen{position:fixed;inset:78px 0 0;z-index:10;background:var(--surface);display:grid;place-items:center;padding:30px}.shutdown-screen>div{max-width:500px;text-align:center}.shutdown-screen h2{font-size:28px;letter-spacing:-1px;margin:17px 0}.shutdown-screen p{font-size:13px;color:var(--muted);line-height:1.9;margin-top:20px}
+
+.install-button{padding:5px 10px;font-size:10px}.python-install-link{display:block;margin-top:9px;font-size:10px}

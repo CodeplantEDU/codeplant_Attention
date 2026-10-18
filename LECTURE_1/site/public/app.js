@@ -477,13 +477,13 @@ async function uploadFiles(files) {
 function updateControls() {
   const finish=$('#finish-app');
   if(finish){
-    finish.disabled=ended||actionPending||uploading||!currentState?.canShutdown||Boolean(currentState?.activeRunId)||Object.values(currentState?.connections||{}).some(c=>c.loginRunning||c.logoutRunning);
-    finish.title='진행 중인 대화나 로그인을 마친 뒤 개인 서버를 종료합니다.';
+    finish.disabled=ended||actionPending||uploading||!currentState?.canShutdown||Boolean(currentState?.activeRunId)||Boolean(currentState?.installing)||Object.values(currentState?.connections||{}).some(c=>c.loginRunning||c.logoutRunning);
+    finish.title='진행 중인 대화·로그인·설치를 마친 뒤 개인 서버를 종료합니다.';
   }
   const active = activeRun();
   const main = $('input[name="main"]:checked')?.value || 'codex';
   const peer = $('#peer-select').value;
-  const ready = Boolean(currentState?.connections?.[main]?.loggedIn) && (!peer || Boolean(currentState?.connections?.[peer]?.loggedIn));
+  const ready = !currentState?.installing && Boolean(currentState?.connections?.[main]?.loggedIn) && (!peer || Boolean(currentState?.connections?.[peer]?.loggedIn));
   $('#start-run').disabled = actionPending || uploading || Boolean(active) || !ready;
   $('#start-run').title = active ? '현재 작업을 마치거나 중지한 뒤 시작할 수 있습니다.' : !ready ? '선택한 메인과 상대 AI의 설치·로그인을 확인하세요. 상대 없음은 메인만 연결하면 됩니다.' : '';
   const label = actionPending ? '요청 중…' : active ? '작업이 진행 중입니다' : '대화 시작';
@@ -495,8 +495,8 @@ function updateControls() {
   $('#upload-files').disabled = uploading;
   const run = getSelectedRun();
   const mainReady = Boolean(currentState?.connections?.[run?.main]?.loggedIn);
-  $('#followup-message').disabled = actionPending || Boolean(active);
-  $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || !mainReady || !$('#followup-message').value.trim();
+  $('#followup-message').disabled = actionPending || Boolean(active) || Boolean(currentState?.installing);
+  $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || Boolean(currentState?.installing) || !mainReady || !$('#followup-message').value.trim();
   setText($('#send-followup'), actionPending ? '요청 중…' : active ? '대화 진행 중' : '후속 메시지 보내기');
   for (const option of $('#peer-select').options) option.disabled = option.value === main;
   $('#dialogue-settings').hidden = !peer;
@@ -525,19 +525,26 @@ function renderConnections() {
     renderModelOptions(provider, connection);
     const card = $(`[data-provider="${provider}"]`);
     const badge = $('.connection-badge', card);
-    const state = connection.logoutRunning ? '로그아웃 중' : connection.loginRunning ? '로그인 중' : connection.loggedIn ? '연결됨' : connection.installed ? '로그인 필요' : '미설치';
+    const installation=currentState.installations?.[provider]||{};
+    const state = installation.status==='installing'?'설치 중':connection.logoutRunning ? '로그아웃 중' : connection.loginRunning ? '로그인 중' : connection.loggedIn ? '연결됨' : connection.installed ? '로그인 필요' : '미설치';
     setText(badge, state);
     badge.className = `connection-badge badge ${connection.loggedIn ? 'good' : connection.loginRunning ? 'busy' : 'neutral'}`;
     setText($('.connection-message', card), connection.message || (connection.loggedIn ? '로그인된 계정으로 대화할 준비가 됐습니다.' : connection.installed ? '로그인을 마친 뒤 새로 확인을 눌러주세요.' : 'CLI 설치가 필요합니다. 설치 안내를 확인하세요.'));
     setText($('.connection-version', card), connection.version || '');
+    const install=$('[data-install]',card);
+    if(install){
+      install.disabled=!currentState.canInstall||connection.installed||Boolean(currentState.installing)||actionPending||Boolean(currentState.activeRunId)||Object.values(currentState.connections).some(c=>c.loginRunning||c.logoutRunning);
+      setText(install,installation.status==='installing'?'설치 중…':connection.installed?'설치됨':installation.status==='failed'?'다시 설치':'설치');
+      if(installation.message&&['installing','failed'].includes(installation.status))setText($('.connection-message',card),installation.message);
+    }
     const login = $('.login-button', card);
     login.hidden = !connection.installed || connection.loggedIn;
-    login.disabled = connection.loginRunning || connection.logoutRunning || actionPending || Boolean(currentState.activeRunId);
+    login.disabled = connection.loginRunning || connection.logoutRunning || actionPending || Boolean(currentState.installing) || Boolean(currentState.activeRunId);
     setText(login, connection.loginRunning ? '로그인 진행 중' : '로그인');
     const logout = $('[data-logout]', card);
     if (logout) {
       logout.hidden = !connection.loggedIn || connection.loginRunning;
-      logout.disabled = connection.logoutRunning || actionPending || Boolean(currentState.activeRunId);
+      logout.disabled = connection.logoutRunning || actionPending || Boolean(currentState.installing) || Boolean(currentState.activeRunId);
       setText(logout, connection.logoutRunning ? '로그아웃 중' : '로그아웃');
     }
     const cancel = $('[data-cancel-login]', card);
@@ -551,6 +558,13 @@ function renderConnections() {
     link.hidden = !safeUrl;
     if (safeUrl) link.href = safeUrl;
     else link.removeAttribute('href');
+  }
+  const docs=currentState.installations?.documents;
+  const docsButton=$('[data-install="documents"]');
+  if(docsButton){
+    docsButton.disabled=!currentState.canInstall||Boolean(currentState.installing)||actionPending||Boolean(currentState.activeRunId)||Object.values(currentState.connections).some(c=>c.loginRunning||c.logoutRunning);
+    setText(docsButton,docs?.status==='installing'?'설치 중…':docs?.status==='completed'?'다시 설치':'문서 도구 설치');
+    setText($('#document-install-status'),docs?.message||'Python이 설치된 PC에서 문서 읽기·파일 생성 패키지를 준비합니다.');
   }
 }
 
@@ -819,6 +833,10 @@ $('#check-connections').addEventListener('click', () => action(async () => {
   try { await request('/api/connections/check', {}); }
   finally { $('#check-connections').disabled = false; }
 }));
+document.querySelectorAll('[data-install]').forEach(button => button.addEventListener('click', () => action(async () => {
+  const result=await request('/api/install',{provider:button.dataset.install});
+  notice(result.alreadyInstalled?'이미 설치된 CLI를 사용합니다.':'설치를 시작했습니다. 오른쪽 상태를 확인하세요.',true);
+})));
 document.querySelectorAll('[data-login]').forEach(button => button.addEventListener('click', () => action(async () => {
   await request('/api/login', { provider: button.dataset.login });
   notice('로그인을 시작했습니다. 열린 브라우저에서 본인 계정으로 완료하세요. 완료하면 연결 상태가 자동으로 바뀝니다.', true);

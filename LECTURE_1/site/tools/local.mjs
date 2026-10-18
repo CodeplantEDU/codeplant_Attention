@@ -3,9 +3,11 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {createService} from '../server.mjs';
+import {adoptLocalTools,adoptDocumentTools,installTool} from '../lib/install.mjs';
 
 const root=fileURLToPath(new URL('..',import.meta.url));
 const dataDir=path.resolve(root,'.local-data');
+adoptLocalTools(dataDir);adoptDocumentTools(dataDir);
 const port=Number(process.env.DIALOGUE_PORT||49322);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('DIALOGUE_PORT는 1024~65535 사이의 정수여야 합니다.');
 if(Number(process.versions.node.split('.')[0])<22)throw Error('Node.js 22 이상이 필요합니다.');
@@ -23,7 +25,7 @@ try{const response=await fetch(url+'/api/health',{signal:AbortSignal.timeout(120
 if(existing?.service==='codeplant-ai-dialogue'&&existing.workspace===workspace){
   console.log('이미 실행 중인 개인 작업실: '+url);browser();
 }else{
-  const service=await createService({root,dataDir,onShutdown:()=>service.close().then(()=>process.exit())});
+  const service=await createService({root,dataDir,installer:provider=>installTool(dataDir,provider),onShutdown:()=>service.close().then(()=>process.exit())});
   try{
     await new Promise((resolve,reject)=>{service.server.once('error',reject);service.server.listen(port,'127.0.0.1',resolve);});
   }catch(error){

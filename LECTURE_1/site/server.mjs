@@ -56,7 +56,7 @@ function renderExport(run){
     `\n## 최종 답변\n\n${run.final||'완료된 최종 답변이 없습니다.'}\n`;
 }
 
-export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI,onShutdown=null,webOrigin=process.env.DIALOGUE_WEB_ORIGIN||WEB_ORIGIN}={}){
+export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cli=runCLI,check=connection,login=beginLogin,logout=logoutCLI,onShutdown=null,installer=null,webOrigin=process.env.DIALOGUE_WEB_ORIGIN||WEB_ORIGIN}={}){
   await mkdir(dataDir,{recursive:true});
   const uploads=await openUploads(dataDir);
   const stateFile=path.join(dataDir,'runs.json');let runs=[];
@@ -71,6 +71,8 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   const bridge=createBridge({origin:webOrigin});
   const authMessages=new Map();
   let logoutRunning=false;
+  let installing=null;
+  const installations=Object.fromEntries([...providers,'documents'].map(p=>[p,{status:'idle',message:''}]));
   function save(){
     const snapshot=JSON.stringify(runs,null,2);
     writing=writing.catch(()=>{}).then(async()=>{const tmp=stateFile+'.tmp';await writeFile(tmp,snapshot,'utf8');await rename(tmp,stateFile);});
@@ -222,12 +224,26 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.1',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
-      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,canShutdown:!remote&&typeof onShutdown==='function',connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.2',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
+      if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,canShutdown:!remote&&typeof onShutdown==='function',canInstall:!remote&&typeof installer==='function',installing,installations,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];
         if(!remote&&(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token))))throw fail(403,'화면을 새로고침한 뒤 다시 실행하세요.');
         const body=await jsonBody(req);
+        if(url.pathname==='/api/install'){
+          if(remote||typeof installer!=='function')throw fail(403,'개인 서버의 로컬 화면에서만 설치할 수 있습니다.');
+          const p=body.provider;if(typeof p!=='string'||!Object.hasOwn(installations,p))throw fail(400,'설치할 도구를 선택하세요.');
+          if(active||loginStops.size||logoutRunning||installing)throw fail(409,'진행 중인 작업·로그인·설치를 먼저 마치세요.');
+          if(connections[p]?.installed)return json(200,{ok:true,alreadyInstalled:true});
+          installing=p;installations[p]={status:'installing',message:'공식 도구를 다운로드하고 있습니다. 몇 분 걸릴 수 있습니다.'};
+          Promise.resolve().then(()=>installer(p)).then(async message=>{
+            await refresh();
+            if(p!=='documents'&&!connections[p].installed)throw Error('설치 후 CLI를 실행하지 못했습니다. 다시 설치를 눌러주세요.');
+            installations[p]={status:'completed',message:message||'설치 완료'};
+          }).catch(error=>{installations[p]={status:'failed',message:error.message||'설치에 실패했습니다. 다시 시도하세요.'};}).finally(()=>{installing=null;});
+          return json(202,{ok:true});
+        }
+        if(installing&&url.pathname!=='/api/uploads')throw fail(409,'도구 설치가 끝날 때까지 기다려주세요.');
         if(url.pathname==='/api/shutdown'){
           if(remote||typeof onShutdown!=='function')throw fail(403,'개인 서버의 로컬 화면에서만 종료할 수 있습니다.');
           if(active||loginStops.size||logoutRunning)throw fail(409,'진행 중인 대화 또는 로그인을 먼저 마치거나 취소하세요.');

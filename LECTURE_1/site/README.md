@@ -4,6 +4,16 @@ EXE를 설치하지 않고, 각자 PC에서 서버를 켜 브라우저로 사용
 
 ## 시작하기
 
+**Codex가 메인인 권장 방식:** Windows는 **자동준비.cmd**를 실행합니다. Node.js가 없으면 공식 ZIP·SHA256 검증 후 앱 폴더에 준비합니다. Claude·Gemini CLI와 문서 패키지는 없는 것만 설치하고 `attention-codex` 스킬과 개인 서버·화면을 준비합니다. Python이 없으면 WinGet 사용자 범위 설치를 시도합니다. WinGet이 없거나 설치 권한·네트워크가 막히면 오류를 표시합니다. 보안 설정이나 인증을 우회하지 않습니다. 로그인은 본인이 완료합니다.
+
+새 Codex 대화에서 다음처럼 입력하세요.
+
+> $attention-codex 필요한 도구를 자동으로 준비하고 작업실을 열어줘. Codex가 메인을 맡고 Claude와 Gemini를 상대로 [내 과제]를 진행해. 각 AI의 실제 답변·자료·진행과 오류 조치를 화면에 바로 보여줘.
+
+이미 Node가 있으면 `node tools/bootstrap.mjs`도 같은 준비를 실행합니다. `--providers claude`로 선택한 AI만 준비하고 `--skip-documents`로 문서 도구를 생략할 수 있습니다. `--check-only`는 설치·서버 실행 없이 확인합니다. Mac의 Node/Python 자체 설치는 자동화하지 않았습니다. 준비 스크립트는 AI에게 질문하지 않습니다.
+
+앱이 없는 다른 Windows PC에서는 스킬의 `scripts/setup.ps1`이 공개 GitHub 고정 릴리스와 공식 API의 SHA256을 확인해 앱을 내려받아 준비합니다. 기존 개인 자료는 배포 대상에서 제외하고 보존합니다. CLI와 문서 의존성은 필요한 경우 인터넷으로 내려받으므로 처음 실행에는 시간이 걸립니다.
+
 1. ZIP을 일반 폴더에 풀어 놓습니다. ZIP 안에서 바로 실행하지 마세요.
 2. Node.js 22 이상을 준비합니다. AI CLI는 화면 오른쪽의 설치 버튼으로 준비합니다. 이미 설치돼 있다면 설치됨으로 표시합니다.
 3. Windows는 **실행.cmd**, Mac은 터미널에서 이 폴더로 이동해 **npm start**를 실행합니다. Mac의 실행.command를 쓰려면 먼저 chmod +x 실행.command를 실행합니다.
@@ -15,6 +25,12 @@ EXE를 설치하지 않고, 각자 PC에서 서버를 켜 브라우저로 사용
 터미널에서는 npm start 또는 node tools/local.mjs로 실행합니다. npm install은 필요 없습니다. 기존 EXE, Electron, Vercel 또는 별도 연결 코드는 사용하지 않습니다.
 
 ## Codex에 그대로 입력하기
+
+스킬이 설치되면 `$attention-codex`로 요청합니다. 이 모드의 메인은 **현재 Codex 채팅**이며 Codex CLI를 다시 호출하지 않습니다. Codex가 작성한 공개 진행·초안·판단을 뷰어에 게시하고 상대 CLI의 실제 답변·에이전트 이벤트를 도착할 때 표시합니다. 채팅 전체나 내부 추론이 자동으로 복제되는 방식은 아닙니다. 후속 요청도 원래 Codex 채팅에서 합니다.
+
+실패하면 해당 AI·단계·오류 유형·확인된 종료 코드·조치가 남습니다. 인증·사용량·모델·네트워크·시간 초과·실행 옵션 등을 분류하고 원시 stderr·토큰은 게시하지 않습니다. Codex는 `diagnose`와 `doctor`를 읽어 조치하고, 일시적 오류만 필요할 때 한 번 재시도합니다. 모든 오류를 자동으로 해결한다는 보장은 없으며 사용량·인증·지원되지 않는 환경은 사용자의 조치가 필요할 수 있습니다.
+
+직접 제어 명령은 `node tools/control.mjs` 다음에 `task 요청.json`, `publish 작업ID 기록.json`, `consult 작업ID 상대요청.json`, `watch 작업ID 20`, `inspect 작업ID`, `diagnose 작업ID`, `files 작업ID 파일.json`, `finish 작업ID 최종.md`입니다. JSON 예제와 순서는 [Codex 스킬](skills/attention-codex/SKILL.md)을 참고하세요. 실행 중인 호출은 기존 `stop 작업ID`로 중지합니다.
 
 > 이 폴더의 README.md를 읽고 ATTENTION 개인 서버를 실행해줘. Node.js 22 이상과 사용할 AI CLI를 확인해. 기존 계정과 자료는 보존하고, 부족한 공식 프로그램만 준비해줘. 로그인은 내가 직접 할게. 파일 읽기와 Word·PDF·PPT·Excel 출력도 쓸 수 있도록 Python과 requirements.txt의 문서 의존성을 확인해줘. npm start로 서버를 켜고 http://127.0.0.1:49322 화면을 열어줘. 실제 AI 질문은 내가 시작하도록 비워 둬.
 

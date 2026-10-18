@@ -4,6 +4,7 @@ import {readFile,readdir,stat} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {diagnose} from './diagnostics.mjs';
 
 const isFile=p=>{try{return existsSync(p);}catch{return false;}};
 export const nodeExecutable=(env=process.env)=>env.DIALOGUE_NODE_EXE||process.execPath;
@@ -240,7 +241,8 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
   const startedAt=Date.now();
   const result=await new Promise((resolve,reject)=>{
     const child=spawn(executable(provider),argumentsFor(provider,{roles,model}),{cwd,env:provider==='gemini'?geminiEnvironment():loginEnvironment(),windowsHide:true,shell:false});
-    let buffer='',size=0,settled=false;
+    let buffer='',size=0,settled=false,stderr='',eventError='';
+    function parse(line){const event=JSON.parse(line);if(event.type==='error'||event.type==='turn.failed'||event.is_error||event.type==='result'&&event.status&&event.status!=='success')eventError=JSON.stringify(event).slice(-16000);parseEvent(provider,event,emit,state);}
     const timer=setTimeout(()=>{state.error='응답 대기 시간을 초과했습니다.';kill(child);},timeout);
     const poll=setInterval(()=>scan().catch(()=>{}),600);
     const abort=()=>{state.error='중지됐습니다.';kill(child);};signal?.addEventListener('abort',abort,{once:true});
@@ -252,15 +254,19 @@ export async function runCLI(provider,{prompt,cwd,roles=[],model='',signal,onEve
     child.stdout.on('data',text=>{
       size+=Buffer.byteLength(text);if(size>8_000_000){state.error='응답 크기 제한을 초과했습니다.';kill(child);return;}
       buffer+=text;let nl;
-      while((nl=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,nl);buffer=buffer.slice(nl+1);try{parseEvent(provider,JSON.parse(line),emit,state);}catch{}}
+      while((nl=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,nl);buffer=buffer.slice(nl+1);try{parse(line);}catch{}}
     });
     // stderr may contain account details; never publish or persist raw CLI diagnostics.
-    child.stderr.on('data',()=>{});
-    child.on('error',()=>done(Error(`${provider} 프로그램 실행에 실패했습니다.`)));
+    child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-16000);});
+    child.on('error',error=>{const diagnostic=diagnose(error,{provider});done(Object.assign(Error(diagnostic.message),{diagnostic}));});
     child.on('close',async code=>{
-      if(buffer.trim())try{parseEvent(provider,JSON.parse(buffer),emit,state);}catch{}
+      if(buffer.trim())try{parse(buffer);}catch{}
       try{await scan();}catch{}
-      if(state.error||code!==0||!state.completed||!state.text.trim())done(Error(state.error||`${provider}가 완료된 답변을 반환하지 않았습니다.`));
+      if(state.error||code!==0||!state.completed||!state.text.trim()){
+        const reason=/초과|중지/.test(state.error)?state.error:(eventError||stderr||state.error);
+        const diagnostic=diagnose(reason,{provider,exitCode:code});
+        done(Object.assign(Error(diagnostic.message),{diagnostic}));
+      }
       else done();
     });
     child.stdin.on('error',()=>{});child.stdin.end(prompt);

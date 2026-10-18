@@ -8,8 +8,53 @@ import {createService,validateRun,validatePeers,dialogueRequested,requestedRound
 import {requestedFormats,parseFilePackage} from '../lib/files.mjs';
 import {argumentsFor,parseEvent,parseOwnedActivity,codexModelOptions,runCLI,geminiEnvironment} from '../lib/providers.mjs';
 import {control} from '../tools/control.mjs';
+import {diagnose} from '../lib/diagnostics.mjs';
+import {setupOptions} from '../tools/bootstrap.mjs';
 
 const ready=async()=>({installed:true,loggedIn:true,version:'test',message:'test'});
+test('automatic preparation selects only requested providers and supports a non-mutating check',()=>{
+  assert.deepEqual(setupOptions([]),{providers:['claude','gemini'],documents:true,start:true,browser:true,checkOnly:false});
+  assert.deepEqual(setupOptions(['--providers','claude,claude','--skip-documents','--check-only','--no-start','--no-browser']),{providers:['claude'],documents:false,start:false,browser:false,checkOnly:true});
+  assert.throws(()=>setupOptions(['--providers','bad;command']));assert.throws(()=>setupOptions(['--unknown']));
+});
+test('Codex-host task streams real peers, preserves a failure, resumes selectively, and creates downloadable files without calling main CLI',async t=>{
+  let attempts=0;const calls=[];
+  const s=await setup(t,async(provider,{prompt,onEvent,model})=>{
+    calls.push(provider);assert.equal(model,provider==='claude'?'sonnet':'gemini-test');
+    assert.match(prompt,/Codex draft/);assert.match(prompt,/reference evidence/);
+    if(provider==='gemini'&&++attempts===1)throw Error('429 quota secret=do-not-publish');
+    onEvent({kind:'mainText',text:provider+' partial'});
+    await new Promise(r=>setTimeout(r,30));return {text:provider+' actual reply',agentCount:0};
+  },async p=>p==='codex'?{installed:false,loggedIn:false}:ready());
+  const uploaded=await s.post('/api/uploads',{name:'reference.txt',base64:Buffer.from('reference evidence').toString('base64')}).then(r=>r.json());
+  const created=await s.post('/api/tasks',{prompt:'Host workflow test',peers:['claude','gemini'],attachmentIds:[uploaded.id],models:{claude:'sonnet',gemini:'gemini-test'}});
+  assert.equal(created.status,201);const {id,url}=await created.json();assert.match(url,new RegExp(id));assert.deepEqual(calls,[]);
+  const api=(action,body)=>s.post(`/api/tasks/${id}/${action}`,body);
+  assert.equal((await api('events',{kind:'peer',title:'fake',text:'fake reply'})).status,400);
+  await api('events',{kind:'main',title:'Codex 초안',text:'Codex draft'});
+  assert.equal((await api('consult',{provider:'codex',prompt:'no'})).status,400);
+  assert.equal((await api('consult',{provider:'claude',model:'bad;command',prompt:'no'})).status,400);
+  assert.equal((await api('consult',{provider:'claude',prompt:'Review Codex draft'})).status,202);
+  let run=await wait(s.get,'waiting');assert.equal(run.requests[0].text,'claude actual reply');assert.ok(run.messages.some(m=>m.provider==='claude'&&m.text==='claude actual reply'));
+  assert.equal((await api('consult',{provider:'gemini',prompt:'Review Codex draft'})).status,202);
+  run=await wait(s.get,'waiting');assert.equal(run.requests[1].diagnostic.code,'quota');assert.ok(!JSON.stringify(run).includes('do-not-publish'));assert.equal(run.requests[0].status,'completed');
+  const diagnostic=await control(['diagnose',id],{baseURL:s.url});assert.equal(diagnostic.diagnostic.provider,'gemini');
+  assert.equal((await api('consult',{provider:'gemini',prompt:'Review Codex draft'})).status,202);
+  const rows=[];const watched=await control(['watch',id,'2'],{baseURL:s.url,emit:row=>rows.push(row)});assert.equal(watched.status,'waiting');assert.ok(rows.some(m=>m.provider==='gemini'&&m.text==='gemini actual reply'));
+  const made=await api('files',{files:[{name:'result.md',content:'Verified test result'}]});assert.equal(made.status,201);
+  const {files}=await made.json();const content=await fetch(s.url+files[0].url).then(r=>r.text());assert.equal(content,'Verified test result');
+  assert.equal((await api('files',{files:[{name:'../escape.md',content:'invalid'}]})).status,400);
+  assert.equal((await s.post(`/api/runs/${id}/messages`,{message:'site followup'})).status,409);
+  assert.equal((await api('finish',{text:'Final based on both actual replies'})).status,200);
+  run=(await s.get()).runs[0];assert.equal(run.status,'completed');assert.deepEqual(calls,['claude','gemini','gemini']);
+  const inspected=await control(['inspect',id],{baseURL:s.url});assert.equal(inspected.references[0].text,'reference evidence');
+  const saved=JSON.parse(await readFile(path.join(s.dataDir,'runs.json'),'utf8'))[0];assert.equal(saved.final,run.final);
+});
+test('diagnostic classification never exposes raw secrets and preserves actionable categories',()=>{
+  for(const [raw,code] of [['401 invalid token secret-value','auth'],['429 quota secret-value','quota'],['unknown model secret-value','model'],['ECONNREFUSED secret-value','network'],['timeout secret-value','timeout'],['ENOENT secret-value','missing-cli'],['unknown option secret-value','arguments'],['unclassified secret-value','unknown']]){
+    const d=diagnose(Error(raw),{provider:'claude',stage:'peer review',exitCode:1});assert.equal(d.code,code);assert.equal(d.exitCode,1);assert.ok(!JSON.stringify(d).includes('secret-value'));assert.ok(d.action);
+  }
+});
 test('fresh personal workspaces start empty and identify their own server without exposing filesystem paths',async t=>{
   const a=await setup(t,async()=>{throw Error('No model call expected');});
   const b=await setup(t,async()=>{throw Error('No model call expected');});
@@ -125,7 +170,7 @@ test('a failing second peer preserves the first review without fabricating a com
 test('unobserved native subagents fail instead of roleplaying completion',async t=>{
   const s=await setup(t,async()=>({text:'I used agents',agentCount:0}));
   await s.post('/api/runs',{prompt:'test',main:'codex',peer:'claude',rounds:1,agentRoles:[{name:'a',task:'b'}]});
-  const run=await wait(s.get,'failed');assert.match(run.error,/실제 실행/);assert.equal(run.final,'');
+  const run=await wait(s.get,'failed');assert.equal(run.diagnostic.code,'agents');assert.equal(run.final,'');
 });
 test('stop prevents later provider calls and concurrent jobs',async t=>{
   let calls=0;
@@ -221,7 +266,7 @@ test('peer delegates cannot borrow main delegate completion as execution evidenc
     return {text:'reply',agentCount:1};
   });
   await s.post('/api/runs',{main:'codex',peer:'claude',prompt:'public',rounds:1,agentRoles:[{name:'main',task:'test'}],peerAgentRoles:[{name:'peer',task:'test'}]});
-  const run=await wait(s.get,'failed');assert.match(run.error,/claude.*실제 실행/);assert.equal(run.final,'');
+  const run=await wait(s.get,'failed');assert.equal(run.diagnostic.code,'agents');assert.equal(run.diagnostic.provider,'claude');assert.equal(run.final,'');
 });
 test('round counts above three, automatic completion and manual unlimited stop',async t=>{
   assert.equal(validateRun({prompt:'x',main:'codex',peer:'claude',rounds:99}).rounds,99);

@@ -424,7 +424,7 @@ function renderGeneratedFiles(run) {
 }
 
 function renderComposer(run) {
-  $('#followup-form').hidden = !run;
+  $('#followup-form').hidden = !run || run.mode==='codex-host';
   const id = run?.id || null;
   if (id !== composerRunId) {
     composerRunId = id;
@@ -509,7 +509,7 @@ function updateControls() {
   const run = getSelectedRun();
   const mainReady = Boolean(currentState?.connections?.[run?.main]?.loggedIn);
   $('#followup-message').disabled = actionPending || Boolean(active) || Boolean(currentState?.installing);
-  $('#send-followup').disabled = !run || actionPending || uploading || Boolean(active) || Boolean(currentState?.installing) || !mainReady || !$('#followup-message').value.trim();
+  $('#send-followup').disabled = !run || run.mode==='codex-host' || actionPending || uploading || Boolean(active) || Boolean(currentState?.installing) || !mainReady || !$('#followup-message').value.trim();
   setText($('#send-followup'), actionPending ? '요청 중…' : active ? '대화 진행 중' : '후속 메시지 보내기');
   for (const option of first.options) option.disabled = Boolean(option.value)&&(option.value===main||option.value===peer2);
   for (const option of second.options) option.disabled = Boolean(option.value)&&(option.value===main||option.value===peer);
@@ -674,7 +674,8 @@ function renderHistory() {
 function render() {
   if (!currentState) return;
   if (initialSelection) {
-    selectedRunId = currentState.activeRunId || currentState.runs?.at(-1)?.id || null;
+    const requested=new URLSearchParams(location.search).get('run');
+    selectedRunId = currentState.runs?.some(r=>r.id===requested)?requested:currentState.activeRunId || currentState.runs?.at(-1)?.id || null;
     initialSelection = false;
   }
   if (!mainChosen) {

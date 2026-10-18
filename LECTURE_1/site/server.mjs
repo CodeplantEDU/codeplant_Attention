@@ -7,6 +7,7 @@ import {connection,runCLI,beginLogin,logoutCLI} from './lib/providers.mjs';
 import {openUploads} from './lib/uploads.mjs';
 import {requestedFormats,fileInstructions,parseFilePackage,createFiles,readGenerated} from './lib/files.mjs';
 import {createBridge,WEB_ORIGIN} from './lib/bridge.mjs';
+import {diagnose,diagnosticText} from './lib/diagnostics.mjs';
 
 const ROOT=fileURLToPath(new URL('.',import.meta.url));
 const providers=['codex','claude','gemini'];
@@ -129,7 +130,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
   }
   async function invoke(run,provider,stage,prompt,roles=[],quiet=false){
     if(active.controller.signal.aborted)throw Error('중지됐습니다.');
-    run.stage=stage;schedule();
+    run.stage=stage;run.currentProvider=provider;schedule();
     const completedBefore=run.agents.filter(a=>a.provider===provider&&a.status==='completed').length;
     const cwd=path.join(dataDir,'work',run.id,randomUUID());await mkdir(cwd,{recursive:true});
     const result=await cli(provider,{prompt:`${boundary}\n\n${prompt}${sourceContext(run)}`,roles,model:run.models[provider],cwd,
@@ -198,7 +199,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       run.status='completed';run.stage=run.stopReason?'종료 조건에 따라 대화 완료':'대화 완료';
     }catch(e){
       const aborted=active?.controller.signal.aborted;
-      run.status=aborted?'stopped':'failed';run.error=aborted?'사용자가 작업을 중지했습니다.':e.message;
+      run.status=aborted?'stopped':'failed';run.diagnostic=diagnose(e,{provider:run.currentProvider,stage:run.stage});run.error=aborted?'사용자가 작업을 중지했습니다.':diagnosticText(run.diagnostic);
       run.stage=aborted?'작업 중지됨':'실행 확인 필요';
       for(const a of run.agents)if(a.status==='running')a.status=aborted?'stopped':'interrupted';
       message(run,'system',null,aborted?'중지 기록':'실행 오류',run.error);
@@ -207,13 +208,26 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       await save().catch(()=>{run.error='기록 저장에 실패했습니다.';run.status='failed';});
     }
   }
+  async function consultHost(run,request){
+    try{
+      request.status='running';
+      const delegation=request.roles.length?'네이티브 서브 에이전트를 실제 생성하고 완료 후 취합해. 역할극으로 대신하지 마. 이름과 역할:\n'+request.roles.map((r,i)=>`helper_${i+1}: ${r.name} / ${r.task}`).join('\n'):'서브 에이전트를 호출하지 말고 직접 답해.';
+      const text=await invoke(run,request.provider,`상대 호출 ${request.number} · ${request.provider}`,delegation+'\n\n'+request.prompt,request.roles);
+      request.status='completed';request.text=text;run.status='waiting';run.stage='상대 답변 도착 · Codex 판단 대기';run.error='';
+    }catch(error){
+      request.status=active.controller.signal.aborted?'stopped':'failed';
+      request.diagnostic=diagnose(error,{provider:request.provider,stage:run.stage});
+      run.diagnostic=request.diagnostic;run.error=diagnosticText(request.diagnostic);run.status='waiting';run.stage='오류 확인 · Codex 판단 대기';
+      message(run,'system',request.provider,'상대 호출 오류',run.error);
+    }finally{request.finishedAt=new Date().toISOString();active=null;await save().catch(()=>{run.error='기록 저장 실패';});}
+  }
   const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.png':'image/png','.ttf':'font/ttf'};
   const publicFiles=new Set(['index.html','app.js','styles.css','assets/codeplant-logo.png','assets/Pretendard-Regular.ttf','assets/Pretendard-SemiBold.ttf','assets/Pretendard-Bold.ttf']);
   async function jsonBody(req){
     if(!String(req.headers['content-type']).startsWith('application/json'))throw fail(415,'JSON 요청이 필요합니다.');
     let size=0;const parts=[];
     const referenceRequest=req.url==='/api/uploads'||req.url==='/api/runs'||/^\/api\/runs\/[a-f0-9-]{36}\/messages$/.test(req.url);
-    const limit=referenceRequest?Infinity:200000;
+    const limit=referenceRequest?Infinity:req.url.startsWith('/api/tasks')?4000000:200000;
     for await(const part of req){size+=part.length;if(size>limit)throw fail(413,'요청이 너무 큽니다.');parts.push(part);}
     try{return JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{throw fail(400,'JSON 내용을 확인하세요.');}
   }
@@ -243,8 +257,14 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
       res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
       res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       res.setHeader('Cache-Control','no-store');
-      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.8.3',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
+      if(req.method==='GET'&&url.pathname==='/api/health')return json(200,{service:'codeplant-ai-dialogue',version:'0.9.0',workspace:createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0,16)});
       if(req.method==='GET'&&url.pathname==='/api/state')return json(200,{token:remote?req.headers['x-local-token']:token,canShutdown:!remote&&typeof onShutdown==='function',canInstall:!remote&&typeof installer==='function',installing,installations,connections,runs:[...runs].reverse().map(({fileContext,...run})=>run),uploads:uploads.list(),activeRunId:active?.run.id||null});
+      const taskRead=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{36})$/);
+      if(req.method==='GET'&&taskRead){
+        if(remote)throw fail(403,'Codex 작업은 로컬에서만 확인할 수 있습니다.');
+        const run=runs.find(r=>r.id===taskRead[1]);if(!run)throw fail(404,'작업을 찾지 못했습니다.');
+        return json(200,{run,references:uploads.select(run.attachmentIds||[])});
+      }
       if(req.method==='POST'){
         const supplied=req.headers['x-local-token'];
         if(!remote&&(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token))))throw fail(403,'화면을 새로고침한 뒤 다시 실행하세요.');
@@ -275,6 +295,46 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           bridge.revoke();return json(200,{ok:true});
         }
         if(url.pathname==='/api/uploads')return json(201,await uploads.add(body));
+        if(url.pathname==='/api/tasks'){
+          if(remote)throw fail(403,'Codex 작업은 로컬에서만 만들 수 있습니다.');
+          if(active||loginStops.size||logoutRunning)throw fail(409,'진행 중인 작업 또는 인증을 먼저 마치세요.');
+          const settings=validateRun({...body,main:'codex'}),files=uploads.select(body.attachmentIds||[]);
+          const run={id:randomUUID(),...settings,mode:'codex-host',title:settings.prompt.slice(0,50),status:'waiting',stage:'Codex 채팅에서 진행',createdAt:new Date().toISOString(),attachmentIds:files.map(f=>f.id),attachments:files.map(({text,...meta})=>meta),messages:[],agents:[],requests:[],files:[],final:'',error:''};
+          runs.push(run);message(run,'user',null,'Codex 작업 지시',run.prompt);message(run,'system',null,'이 채팅의 Codex가 메인','메인은 이 작업을 지시한 Codex 채팅입니다. 상대 CLI만 필요할 때 호출합니다. 화면은 전달된 답변·실행 이벤트를 표시하며 채팅 전체를 자동으로 읽지 않습니다.');
+          await save();return json(201,{id:run.id,url:`http://${host}/?run=${run.id}`});
+        }
+        const taskAction=url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{36})\/(events|consult|files|finish)$/);
+        if(taskAction){
+          if(remote)throw fail(403,'Codex 작업 제어는 로컬에서만 가능합니다.');
+          const run=runs.find(r=>r.id===taskAction[1]);if(!run||run.mode!=='codex-host')throw fail(404,'Codex 작업을 찾지 못했습니다.');
+          const action=taskAction[2];
+          if(action==='events'){
+            if(!['main','user','system','agent'].includes(body.kind)||typeof body.text!=='string'||!body.text.trim()||body.text.length>100000||typeof body.title!=='string'||body.title.length>200)throw fail(400,'기록 종류·제목·본문을 확인하세요.');
+            message(run,body.kind,body.kind==='user'?null:'codex',body.title,body.text);await save();return json(200,{ok:true});
+          }
+          if(active||loginStops.size||logoutRunning)throw fail(409,'진행 중인 호출 또는 인증이 끝난 뒤 요청하세요.');
+          if(action==='consult'){
+            const provider=body.provider;
+            if(!peersFor(run).includes(provider))throw fail(400,'이 작업에 선택된 상대 AI만 호출할 수 있습니다.');
+            if(!connections[provider].loggedIn){run.diagnostic=diagnose('로그인 확인 필요',{provider,stage:'상대 요청 전 인증 확인'});run.error=diagnosticText(run.diagnostic);message(run,'system',provider,'상대 연결 확인 실패',run.error);await save();throw fail(409,'상대 AI의 로그인을 확인하세요. 오류 기록을 작업실에 보존했습니다.');}
+            if(typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>20000)throw fail(400,'상대 지시는 1~20,000자로 작성하세요.');
+            const setting=settingsFor(run,provider),roles=body.roles??setting.agentRoles;
+            const validated=validateRun({...run,models:{...run.models,[provider]:body.model??run.models[provider]},peerSettings:{...run.peerSettings,[provider]:{role:setting.role,agentRoles:roles}}});
+            run.models=validated.models;
+            const request={number:run.requests.length+1,provider,model:run.models[provider],prompt:body.prompt,roles,status:'queued',startedAt:new Date().toISOString()};
+            run.requests.push(request);run.status='running';run.error='';run.diagnostic=null;active={run,controller:new AbortController()};
+            message(run,'system',provider,`상대 호출 ${request.number} 시작`,body.prompt);await save();
+            consultHost(run,request).catch(()=>{});return json(202,{id:run.id,request:request.number});
+          }
+          if(action==='files'){
+            const formats=Array.isArray(body.files)?body.files.map(f=>path.extname(f.name||'').slice(1).toLowerCase()):[];
+            let packet;try{packet=parseFilePackage(JSON.stringify(body),formats);}catch(e){throw fail(400,e.message);}
+            const files=await createFiles({dataDir,runId:run.id,packet});run.files.push(...files);await save();return json(201,{files});
+          }
+          if(typeof body.text!=='string'||!body.text.trim()||body.text.length>100000)throw fail(400,'완료할 본문을 입력하세요.');
+          run.final=body.text;run.status='completed';run.stage='Codex 정리 완료';run.error='';run.diagnostic=null;run.finishedAt=new Date().toISOString();
+          message(run,'main','codex','Codex 최종 정리',body.text);await save();return json(200,{ok:true});
+        }
         if(url.pathname==='/api/connections/check'){await refresh();return json(200,{ok:true});}
         if(url.pathname==='/api/login'){
           const p=body.provider;if(!providers.includes(p))throw fail(400,'AI를 선택하세요.');
@@ -331,6 +391,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           if(loginStops.size||logoutRunning)throw fail(409,'로그인·로그아웃 처리를 마친 뒤 이어가세요.');
           if(active)throw fail(409,'진행 중인 작업을 마치거나 중지하세요.');
           const run=runs.find(r=>r.id===followup[1]);if(!run)throw fail(404,'작업을 찾지 못했습니다.');
+          if(run.mode==='codex-host')throw fail(409,'이 작업은 지시한 Codex 채팅에서 이어가세요.');
           if(typeof body.message!=='string'||!body.message.trim()||body.message.length>20000)throw fail(400,'추가 지시는 1~20,000자로 입력하세요.');
           const discuss=dialogueRequested(body.message);
           if(!connections[run.main].loggedIn)throw fail(409,'메인 AI의 로그인을 확인하세요.');
@@ -347,7 +408,7 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           const files=uploads.select([...new Set([...(run.attachmentIds||[]),...(body.attachmentIds||[])])]);
           run.attachmentIds=files.map(f=>f.id);run.attachments=files.map(({text,...meta})=>meta);
           if(discuss){run.peers=peers;run.peer=peers[0];run.peerSettings=peerSettings;}
-          run.followupCount=(run.followupCount||0)+1;run.status='running';run.error='';run.final='';run.finishedAt=null;
+          run.followupCount=(run.followupCount||0)+1;run.status='running';run.error='';run.diagnostic=null;run.final='';run.finishedAt=null;
           active={run,controller:new AbortController()};
           message(run,'user',null,`추가 지시 ${run.followupCount}`,body.message.trim());
           try{await save();}catch{active=null;run.status='failed';throw fail(500,'추가 지시를 저장하지 못했습니다.');}

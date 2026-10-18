@@ -4,7 +4,7 @@
 
 ## 실행
 
-**[개인 서버 ZIP 받기](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/local-v0.8.3/ATTENTION-Local.zip)** → 압축 해제 → Node.js 22 이상 준비 → 화면의 설치 버튼으로 AI CLI 준비 → Windows는 실행.cmd를 엽니다.
+**[개인 서버 ZIP 받기](https://github.com/CodeplantEDU/codeplant_Attention/releases/download/local-v0.9.0/ATTENTION-Local.zip)** → 압축 해제 → Windows는 자동준비.cmd 실행 → 새 Codex 채팅에서 $attention-codex로 지시합니다.
 
 브라우저 주소: **http://127.0.0.1:49322**. 서버 창은 켜 두세요. Mac은 폴더 안에서 npm start를 실행합니다.
 

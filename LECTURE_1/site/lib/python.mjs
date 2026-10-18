@@ -5,6 +5,7 @@ import path from 'node:path';
 export function pythonExecutable(){
   const candidates=[process.env.DIALOGUE_PYTHON,
     path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe'),
+    ...['314','313','312','311','310'].map(version=>path.join(os.homedir(),'AppData/Local/Programs/Python/Python'+version+'/python.exe')),
     path.join(os.homedir(),'AppData/Local/Programs/Python/Python312/python.exe')].filter(Boolean);
   return candidates.find(p=>existsSync(p))||'python';
 }

@@ -110,11 +110,25 @@ jobs:
           done
           node -e "const r=require(process.env.ATTENTION_SMOKE_DIR+'/smoke/result.json');if(!r.ok)process.exit(1);console.log(r)"
           wait "$app_pid"
+          if [ "${{ matrix.platform }}" = darwin ]; then
+            lipo -archs "$exe" | grep 'x86_64.*arm64\|arm64.*x86_64'
+            export ATTENTION_SMOKE_DIR="$ATTENTION_SMOKE_DIR/intel"
+            arch -x86_64 "$exe" --smoke-test &
+            app_pid=$!
+            for i in $(seq 1 90); do
+              [ -f "$ATTENTION_SMOKE_DIR/smoke/result.json" ] && break
+              sleep 2
+            done
+            node -e "const r=require(process.env.ATTENTION_SMOKE_DIR+'/smoke/result.json');if(!r.ok||r.arch!=='x64')process.exit(1);console.log(r)"
+            wait "$app_pid"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: smoke-${{ matrix.platform }}
-          path: smoke-output/smoke
+          path: |
+            smoke-output/smoke
+            smoke-output/intel/smoke
       - uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.platform }}

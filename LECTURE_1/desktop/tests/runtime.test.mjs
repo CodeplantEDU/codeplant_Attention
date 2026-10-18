@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {runtimePaths,providerPaths,backendEnvironment,installProvider} from '../runtime.mjs';
+import {runtimePaths,providerPaths,backendEnvironment,installProvider,siteRoot} from '../runtime.mjs';
 import {documentCommand} from '../../site/lib/python.mjs';
 test('each desktop architecture selects its own bundled tools and literal paths',()=>{
   for(const platform of ['win32','darwin'])for(const arch of ['x64','arm64']){
@@ -30,4 +30,10 @@ test('packaged document engine has fixed operations and avoids Python dependency
   const before=process.env.DIALOGUE_FILETOOLS;process.env.DIALOGUE_FILETOOLS='/tools/attention files';
   try{assert.deepEqual(documentCommand('render','ignored.py',['/data/spec']),{exe:'/tools/attention files',args:['render','/data/spec']});assert.throws(()=>documentCommand('exec','a',[]));}
   finally{if(before===undefined)delete process.env.DIALOGUE_FILETOOLS;else process.env.DIALOGUE_FILETOOLS=before;}
+});
+test('source checkout and packaged app use the same site assets without a duplicate checkout',async t=>{
+  const base=await mkdtemp(path.join(tmpdir(),'attention-roots-'));t.after(()=>rm(base,{recursive:true,force:true}));
+  assert.equal(siteRoot(path.join(base,'desktop')),path.join(base,'site'));
+  await mkdir(path.join(base,'resources','site'),{recursive:true});await writeFile(path.join(base,'resources','site','server.mjs'),'');
+  assert.equal(siteRoot(path.join(base,'resources')),path.join(base,'resources','site'));
 });

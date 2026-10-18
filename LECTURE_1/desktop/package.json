@@ -11,8 +11,8 @@
     "start": "electron .",
     "prepare:node": "node scripts/prepare-node.mjs",
     "test": "node --test tests/*.test.mjs",
-    "pack:win": "electron-builder --win portable --x64",
-    "pack:mac": "electron-builder --mac dmg --universal"
+    "pack:win": "electron-builder --win portable --x64 --publish never",
+    "pack:mac": "electron-builder --mac dmg --universal --publish never"
   },
   "devDependencies": {
     "electron": "44.9.0",
@@ -30,7 +30,7 @@
     ],
     "win": {"target": "portable", "artifactName": "CODEPLANT-ATTENTION-Windows.exe", "signAndEditExecutable": false},
     "portable": {"requestExecutionLevel": "user"},
-    "mac": {"target": "dmg", "artifactName": "CODEPLANT-ATTENTION-Mac.dmg", "category": "public.app-category.productivity", "identity": null, "hardenedRuntime": false, "mergeASARs": true},
+    "mac": {"target": "dmg", "artifactName": "CODEPLANT-ATTENTION-Mac.dmg", "category": "public.app-category.productivity", "identity": null, "hardenedRuntime": false, "mergeASARs": true, "x64ArchFiles": "Contents/Resources/runtime/**"},
     "dmg": {"title": "CODEPLANT ATTENTION"},
     "publish": null
   }

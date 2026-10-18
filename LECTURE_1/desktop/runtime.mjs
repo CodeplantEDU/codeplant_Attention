@@ -4,6 +4,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 
 export const packages={codex:'@openai/codex@0.163.0',claude:'@anthropic-ai/claude-code@2.1.302',gemini:'@google/gemini-cli@0.64.0'};
+export const siteRoot=resources=>existsSync(path.join(resources,'site','server.mjs'))?path.join(resources,'site'):path.resolve(resources,'../site');
 export function runtimePaths(resources,platform=process.platform,arch=process.arch){
   const root=path.join(resources,'runtime',`${platform}-${arch}`);
   return {root,node:path.join(root,'node',platform==='win32'?'node.exe':'bin/node'),
@@ -30,7 +31,8 @@ export function backendEnvironment(resources,base){
   // Only this child gets these paths; existing terminal accounts and PATH are unchanged.
   env.PATH=path.dirname(runtime.node)+path.delimiter+(env.PATH||'');
   env.DIALOGUE_NODE_EXE=runtime.node;env.DIALOGUE_FILETOOLS=runtime.filetools;
-  env.DIALOGUE_ASSETS=path.join(resources,'site/public/assets');
+  env.DIALOGUE_ASSETS=path.join(siteRoot(resources),'public/assets');
+  env.ATTENTION_SITE_ROOT=siteRoot(resources);
   for(const [p,key] of Object.entries({codex:'DIALOGUE_CODEX_EXE',claude:'DIALOGUE_CLAUDE_EXE',gemini:'DIALOGUE_GEMINI_SCRIPT'})){
     const found=providerPaths(base,p).find(existsSync);if(found)env[key]=found;
   }

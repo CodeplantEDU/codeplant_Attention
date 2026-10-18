@@ -7,12 +7,12 @@ import {createService} from '../server.mjs';
 import {beginLogin,logoutCLI,geminiHasLogin} from '../lib/providers.mjs';
 
 const testRoot=fileURLToPath(new URL('../../tmp/auth-tests/',import.meta.url));
-async function service(t,{loggedIn=false,logoutError=false}={}){
+async function service(t,{loggedIn=false,logoutError=false,provider='gemini'}={}){
   await mkdir(testRoot,{recursive:true});
   let done,stopped=0,logoutCalls=0;
   const app=await createService({
     dataDir:await mkdtemp(path.join(testRoot,'service-')),
-    check:async p=>({installed:true,loggedIn:p==='gemini'?loggedIn:true}),
+    check:async p=>({installed:true,loggedIn:p===provider?loggedIn:true}),
     login:(_p,_cwd,onUrl,onExit)=>{done=onExit;onUrl('https://accounts.google.com/o/oauth2/auth?state=test');return ()=>{stopped++;};},
     logout:async()=>{logoutCalls++;if(logoutError)throw Error('private detail');loggedIn=false;},
     cli:async()=>new Promise(()=>{})
@@ -41,7 +41,7 @@ test('login completes without terminal close; cancellation ignores late callback
 test('logout updates the real check result, protects token boundary and preserves history',async t=>{
   const s=await service(t,{loggedIn:true});
   assert.equal((await s.post('/api/logout',{provider:'gemini'},'wrong')).status,403);
-  assert.equal((await s.post('/api/logout',{provider:'codex'})).status,400);
+  assert.equal((await s.post('/api/logout',{provider:'unknown'})).status,400);
   assert.equal(s.counts().logoutCalls,0);
   assert.equal((await s.post('/api/logout',{provider:'gemini'})).status,200);
   assert.equal((await s.state()).connections.gemini.loggedIn,false);
@@ -61,6 +61,21 @@ test('account changes are rejected while a model job is active',async t=>{
   assert.equal((await s.post('/api/logout',{provider:'gemini'})).status,409);
   assert.equal((await s.post('/api/login',{provider:'codex'})).status,409);
   assert.equal(s.counts().logoutCalls,0);
+});
+for(const provider of ['codex','claude'])test(`${provider}: logout, login cancellation, completion and failure use the same state contract`,async t=>{
+  const s=await service(t,{provider,loggedIn:true});
+  assert.equal((await s.post('/api/logout',{provider})).status,200);
+  assert.equal((await s.state()).connections[provider].loggedIn,false);
+  assert.equal((await s.post('/api/login',{provider})).status,202);
+  assert.equal((await s.state()).connections[provider].loginRunning,true);
+  await s.post('/api/login/cancel',{provider});await s.finish(false);
+  assert.match((await s.state()).connections[provider].message,/취소/);
+  await s.post('/api/login',{provider});await s.finish(false);
+  assert.equal((await s.state()).connections[provider].loginRunning,false);
+  assert.match((await s.state()).connections[provider].message,/failed/);
+  await s.post('/api/login',{provider});await s.finish(true);
+  const c=(await s.state()).connections[provider];
+  assert.equal(c.loggedIn,true);assert.equal(c.loginRunning,false);assert.equal(c.loginUrl,undefined);
 });
 test('Gemini auth child uses installed core exports for login and logout without model calls',async t=>{
   await mkdir(testRoot,{recursive:true});const dir=await mkdtemp(path.join(testRoot,'cli-'));

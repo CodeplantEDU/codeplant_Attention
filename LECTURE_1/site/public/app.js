@@ -815,7 +815,7 @@ document.querySelectorAll('[data-cancel-login]').forEach(button => button.addEve
 })));
 document.querySelectorAll('[data-logout]').forEach(button => button.addEventListener('click', () => action(async () => {
   await request('/api/logout', { provider: button.dataset.logout });
-  notice('Gemini에서 로그아웃했습니다. 로그인 버튼으로 다른 Google 계정을 연결할 수 있습니다.', true);
+  notice(`${providerNames[button.dataset.logout]}에서 로그아웃했습니다. 로그인 버튼으로 계정을 다시 연결할 수 있습니다.`, true);
 })));
 
 connectRoleEditor('main', mainRolePresets);

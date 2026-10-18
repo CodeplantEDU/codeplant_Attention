@@ -238,13 +238,13 @@ export async function createService({root=ROOT,dataDir=path.join(ROOT,'data'),cl
           return json(200,{ok:true});
         }
         if(url.pathname==='/api/logout'){
-          const p=body.provider;if(p!=='gemini')throw fail(400,'현재 Gemini 로그아웃을 지원합니다.');
+          const p=body.provider;if(!providers.includes(p))throw fail(400,'AI를 선택하세요.');
           if(active||logoutRunning)throw fail(409,'진행 중인 작업을 마친 뒤 로그아웃하세요.');
           const operation=loginStops.get(p);loginStops.delete(p);operation?.stop();
           connections[p].loginRunning=false;delete connections[p].loginUrl;
           logoutRunning=true;connections[p].logoutRunning=true;
           try{
-            await logout(p,root);authMessages.set(p,'로그아웃했습니다. Google 계정으로 다시 로그인할 수 있습니다.');
+            await logout(p,root);authMessages.set(p,'로그아웃했습니다. 로그인 버튼으로 계정을 다시 연결할 수 있습니다.');
           }catch{authMessages.set(p,'로그아웃에 실패했습니다. 인증 파일 권한과 CLI 설치를 확인하세요.');throw fail(400,authMessages.get(p));}
           finally{logoutRunning=false;connections[p].logoutRunning=false;await refresh();}
           return json(200,{ok:true});

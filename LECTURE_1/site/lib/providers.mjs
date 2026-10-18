@@ -287,7 +287,9 @@ export function beginLogin(provider,cwd,onUrl,onExit){
   }
   const args=provider==='codex'?['login']:['auth','login','--claudeai'];
   const child=spawn(executable(provider),args,{cwd,env:loginEnvironment(),windowsHide:true,shell:false});
-  let data='';const timer=setTimeout(()=>kill(child),300000);
+  let data='',finished=false;
+  const finish=(ok,message)=>{if(finished)return;finished=true;clearTimeout(timer);onExit(ok,message);};
+  const timer=setTimeout(()=>{kill(child);finish(false,'로그인 시간이 초과됐습니다. 다시 로그인하세요.');},300000);
   function receive(chunk){
     data=(data+chunk).slice(-16000);
     for(const match of data.matchAll(/https:\/\/[^\s<>"']+/g))try{
@@ -295,14 +297,18 @@ export function beginLogin(provider,cwd,onUrl,onExit){
       if(['auth.openai.com','auth0.openai.com','claude.ai','platform.claude.com','console.anthropic.com'].includes(url.hostname))onUrl(url.href);
     }catch{}
   }
-  child.stdout.on('data',receive);child.stderr.on('data',receive);child.stdin.end();
-  child.on('error',()=>{clearTimeout(timer);onExit(false);});
-  child.on('close',code=>{clearTimeout(timer);onExit(code===0);});
+  child.stdout.on('data',receive);child.stderr.on('data',receive);child.stdin.on('error',()=>{});child.stdin.end();
+  child.on('error',()=>finish(false,'인증 프로그램을 시작하지 못했습니다. CLI 설치를 확인하세요.'));
+  child.on('close',code=>finish(code===0,code===0?'로그인이 완료됐습니다.':'로그인을 완료하지 못했습니다. 다시 로그인하세요.'));
   return ()=>kill(child);
 }
 
 export async function logoutCLI(provider,cwd){
-  if(provider!=='gemini')throw Error('현재 Gemini 로그아웃을 지원합니다.');
-  const result=await capture(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd});
-  if(result.code!==0||geminiHasLogin())throw Error('Gemini 로그아웃에 실패했습니다. CLI 설치와 인증 파일 권한을 확인하세요.');
+  if(!['codex','claude','gemini'].includes(provider))throw Error('AI를 선택하세요.');
+  const result=provider==='gemini'
+    ?await capture(process.execPath,[fileURLToPath(new URL('../tools/gemini-auth.mjs',import.meta.url)),'logout'],{cwd})
+    :await capture(executable(provider),provider==='codex'?['logout']:['auth','logout'],{cwd});
+  if(result.code!==0)throw Error('로그아웃에 실패했습니다. CLI 설치와 인증 파일 권한을 확인하세요.');
+  const state=await connection(provider,cwd);
+  if(!state.installed||state.loggedIn)throw Error('로그아웃 후 연결 해제를 확인하지 못했습니다. 새로 확인을 눌러주세요.');
 }

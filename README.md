@@ -1,5 +1,11 @@
 # ATTENTION · 개인 AI 작업실
 
+## LECTURE 2 · 디자인 시스템 만들기
+
+**[한국어 디자인 스튜디오](LECTURE_2/README.md)**에서 기획 → 디자인 규칙 → 미리보기 → Codex 스킬 제작용 자료 내보내기를 진행합니다. `LECTURE_2` 폴더의 **실행.cmd** 또는 **npm start**로 실행하세요. 주소는 **http://127.0.0.1:49323**입니다. 각자 PC의 Codex·Claude Code를 자동으로 찾아 본인 계정으로 사용합니다. 최종 스킬은 내보낸 자료를 바탕으로 Codex에서 제작합니다.
+
+## LECTURE 1 · 개인 AI 작업실
+
 각자의 PC에서 서버를 켜고, 본인 Codex·Claude Code·Antigravity 계정으로 작업하는 가벼운 브라우저 앱입니다. EXE 설치나 Vercel 연결 없이 사용합니다.
 
 ## 실행

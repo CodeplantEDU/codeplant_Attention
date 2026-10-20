@@ -4,7 +4,7 @@
 
 ## 확인된 결과
 
-- `node --test LECTURE_2/tests/studio.test.mjs`: **10개 통과, 실패 0개**. 입력 형식·범위, HTML 삽입 차단, 색상 대비 계산, ZIP 토큰 일치, 두 CLI 응답 파싱, npm 경로 탐색, 저장 충돌, Host·Origin·요청 토큰, AI 제안과 원본 분리, 중지·중복 호출·재시작 복구를 포함합니다.
+- `node --test LECTURE_2/tests/studio.test.mjs`: **14개 통과, 실패 0개**. 입력 형식·범위, HTML 삽입 차단, 색상 대비 계산, ZIP 토큰 일치, 두 CLI 응답 파싱, npm 경로 탐색, 저장 충돌, Host·Origin·요청 토큰, AI 제안과 원본 분리, 중지·중복 호출·재시작 복구를 포함합니다. 로고 역할·글자 역할의 값 일치, 이전 편집본 호환, 글꼴 형식 검증, 업로드 원본의 저장·ZIP·JSON 재가져오기와 다른 프로젝트의 글꼴 참조 차단을 추가로 확인했습니다.
 - 실제 Codex 호출 1회, 실제 Claude Code 호출 1회: 공개 예제의 완전한 디자인 JSON 반환, 스키마 검증 통과, 참고 자료 보존, 제안 적용 전 원본 버전 유지. 각각 약 16초·12초였습니다. 시간은 이 검증 당시 값이며 응답 속도의 보장이 아닙니다. [실제 호출 기록](evidence/ai-smoke.json).
 - ZIP을 내려받아 Python 표준 `zipfile`로 CRC·파일 경로·JSON/CSS 색상 일치를 확인했습니다. `SKILL.md`가 없는 것도 확인했습니다.
 - 압축을 푼 `preview.html`을 Chrome의 `file://`로 열어 두 Pretendard 글꼴 로딩, 실제 버튼 응답, 콘솔 오류 0개를 확인했습니다. [검사 기록](evidence/export-check.json) · [화면](evidence/exported-preview.png).
@@ -33,3 +33,9 @@
 - 최종 Codex 스킬 제작과 스킬 적용 결과: 이번 서비스는 디자인 시스템 자료까지만 만듭니다.
 
 공개 참조 URL의 내용 자동 수집, 이미지로부터 브랜드 추출, 다중 사용자 공용 서버와 협업 편집은 구현 범위에 포함하지 않았습니다.
+
+## 로고·서체 상세 편집 추가 검수
+
+로고·심볼·어두운 배경용 원본과 본문/제목 글꼴 업로드, 역할별 크기·굵기·행간·자간, 사용규칙·출처 기록을 추가했습니다. 확장 검수는 [독립 검수 보고](evidence/uiux-brand-review.md)와 [확장 AI 응답 기록](evidence/ai-brand-smoke.json)에 기록합니다. 초기 검수의 화면·시간과 후속 확장 검수를 구분해서 확인하세요.
+
+확장 ZIP은 CRC 검사와 함께 압축 해제 후 file://로 열어 실제 업로드 본문/제목 글꼴 두 face가 loaded이고 콘솔 오류가 없음을 확인했습니다([기록](evidence/brand-export-check.json)). 업로드 응답을 지연시킨 뒤 다른 프로젝트로 이동하는 브라우저 검사에서도 양쪽 프로젝트의 fontAssets가 변경되지 않았습니다([기록](evidence/brand-switch-check.json)). 실제 정상 파일 업로드는 TTF 두 종류로 확인했고 OTF·WOFF·WOFF2·가변 글꼴의 실제 파일은 미검증입니다.

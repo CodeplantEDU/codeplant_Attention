@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { initialDesign, validateDesign, validateLogo, contrast, checks, tokensCss } from '../public/model.mjs';
+import { initialDesign, validateDesign, validateLogo, validateFont, contrast, checks, tokensCss } from '../public/model.mjs';
 import { previewHtml } from '../public/preview.mjs';
 import { exportFiles, zip } from '../lib/export.mjs';
 import { findCli, generationArgs, parseDesignOutput, accountEnvironment, safeFailure } from '../lib/providers.mjs';
@@ -27,6 +27,29 @@ test('contrast uses WCAG luminance and reflects changed button tokens', () => {
   assert.equal(contrast('#000000', '#FFFFFF'), 21); assert.equal(contrast('#FFFFFF', '#FFFFFF'), 1);
   assert.ok(checks(fixture()).every(c => c.pass));
   const d = fixture(); d.colors.onPrimary = d.colors.primary; assert.equal(checks(d).find(c => c.label === '대표 버튼').pass, false);
+});
+test('existing designs migrate only new fields, preserve their font, and still reject missing original fields', () => {
+  const old = fixture();
+  for (const key of ['headingFontFamily', 'logoUsage', 'symbolUsage', 'logoAvoid', 'fontSource', 'fontUsage', 'imageRules', 'logoClearSpace', 'logoMinWidth', 'symbolMinSize', 'bodyWeight', 'headingWeight', 'headingLineHeight', 'letterSpacing', 'labelSize', 'captionSize']) delete old[key];
+  old.fontFamily = 'serif'; const migrated = validateDesign(old);
+  assert.equal(migrated.headingFontFamily, 'serif'); assert.equal(migrated.fontSource, ''); assert.equal(migrated.name, old.name);
+  assert.throws(() => validateDesign({})); assert.throws(() => validateDesign({ ...fixture(), headingFontFamily: 'Bad";</style>' }));
+  assert.throws(() => validateDesign({ ...fixture(), bodyWeight: 450 }));
+});
+test('font upload validates format, signature and file size', () => {
+  assert.throws(() => validateFont({ name: 'font.ttf', dataUrl: 'data:font/ttf;base64,' + Buffer.from('not-a-real-font').toString('base64') }));
+  assert.throws(() => validateFont({ name: 'font.svg', dataUrl: 'data:font/ttf;base64,AAAA' }));
+  assert.throws(() => validateFont({ name: 'font.ttf', dataUrl: 'data:font/ttf;base64,' + 'A'.repeat(7000000) }));
+});
+test('logo roles and typography rules use the same values in CSS, preview and document', () => {
+  const d = { ...fixture(), headingFontFamily: 'Noto Sans KR', fontFamily: 'Pretendard', headingWeight: 600, headingLineHeight: 1.4, letterSpacing: .5, labelSize: 15, captionSize: 11, symbolMinSize: 32, logoUsage: '헤더 왼쪽', fontSource: '사용자 확인 메모' };
+  const image = 'data:image/png;base64,iVBORw0KGgo=';
+  const files = exportFiles({ design: d, revision: 1, logoDataUrl: image, darkLogoDataUrl: image, symbolDataUrl: image });
+  for (const name of ['assets/logo.png', 'assets/logo-dark.png', 'assets/symbol.png']) assert.ok(files[name]);
+  assert.ok(files['tokens.css'].includes('--ds-heading-font: "Noto Sans KR"')); assert.ok(files['tokens.css'].includes('--ds-label-size: 15px'));
+  assert.ok(files['preview.html'].includes('32 × 32px')); assert.ok(files['preview.html'].includes('어두운 배경용 로고'));
+  assert.ok(files['DESIGN.md'].includes('사용자 확인 메모')); assert.ok(files['DESIGN.md'].includes('헤더 왼쪽'));
+  assert.equal(JSON.parse(files['tokens.json']).symbolDataUrl, image);
 });
 test('preview escapes user markup including style-breakout names', () => {
   const d = fixture(); d.name = '</style><script>alert("XSS")</script>'; d.purpose = '<img src=x onerror=alert(1)>';
@@ -71,7 +94,7 @@ test('CLI discovery handles npm installation without executing a shell shim', as
 });
 test('local API saves atomically, preserves revisions, validates input, exports and isolates AI proposals', async t => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'design-service-')); let calls = 0;
-  const service = await createService({ root, dataDir, probe: async id => ({ id, label: id, installed: true, loggedIn: true }), runner: async (id, d) => { calls++; return { ...d, colors: { ...d.colors, primary: '#456789' } }; } });
+  const service = await createService({ root, dataDir, probe: async id => ({ id, label: id, installed: true, loggedIn: true }), runner: async (id, d) => { calls++; return { ...d, fontSource: '추측한 라이선스', colors: { ...d.colors, primary: '#456789' } }; } });
   await new Promise(resolve => service.server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await service.close(); await rm(dataDir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${service.server.address().port}`;
@@ -97,7 +120,7 @@ test('local API saves atomically, preserves revisions, validates input, exports 
   await call('/api/providers/refresh', 'POST', {});
   const job = await (await call('/api/jobs', 'POST', { projectId: created.id, revision: 2, provider: 'codex', instruction: '색상 제안' })).json();
   for (let i = 0; i < 30; i++) { const result = await (await call('/api/jobs/' + job.id)).json(); if (result.status === 'completed') break; await new Promise(resolve => setTimeout(resolve, 10)); }
-  const done = await (await call('/api/jobs/' + job.id)).json(); assert.equal(done.status, 'completed'); assert.equal(calls, 1); assert.equal(done.design.colors.primary, '#456789');
+  const done = await (await call('/api/jobs/' + job.id)).json(); assert.equal(done.status, 'completed'); assert.equal(calls, 1); assert.equal(done.design.colors.primary, '#456789'); assert.equal(done.design.fontSource, current.design.fontSource);
   const unchanged = await (await call('/api/projects/' + created.id)).json(); assert.equal(unchanged.design.colors.primary, '#6FC5C1'); assert.equal(unchanged.revision, 2);
   const disk = JSON.parse(await readFile(path.join(dataDir, 'projects', created.id + '.json'))); assert.deepEqual(disk.design, unchanged.design);
   assert.equal((await call('/.local-data/projects/' + created.id + '.json')).status, 404);
@@ -109,6 +132,28 @@ test('interrupted AI jobs recover as failed while saved designs remain accessibl
   const service = await createService({ root, dataDir });
   assert.equal(JSON.parse(await readFile(path.join(jobsDir, id + '.json'))).status, 'failed');
   await service.close(); await rm(dataDir, { recursive: true, force: true });
+});
+test('uploaded font bytes survive save, ZIP export and JSON reimport; cross-project references are rejected', async t => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'design-fonts-')), service = await createService({ root, dataDir });
+  await new Promise(resolve => service.server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { await service.close(); await rm(dataDir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${service.server.address().port}`, state = await (await fetch(base + '/api/state')).json();
+  const call = (route, method = 'GET', value, headers = {}) => fetch(base + route, { method, headers: { 'Content-Type': 'application/json', 'X-Design-Token': state.token, ...headers }, ...(value === undefined ? {} : { body: JSON.stringify(value) }) });
+  const p = await (await call('/api/projects', 'POST', { design: fixture() })).json();
+  const bytes = await readFile(path.join(root, 'public/assets/Pretendard-Regular.ttf')), font = { name: 'my-body.ttf', dataUrl: 'data:font/ttf;base64,' + bytes.toString('base64') };
+  const meta = await (await call(`/api/projects/${p.id}/fonts/body`, 'POST', font)).json(); assert.equal(meta.name, font.name);
+  const f = await call('/api/fonts/' + meta.id, 'GET', undefined, { Origin: 'null' }); assert.equal(f.status, 200); assert.deepEqual(Buffer.from(await f.arrayBuffer()), bytes);
+  assert.equal((await call('/api/fonts/' + meta.id, 'GET', undefined, { Origin: 'https://evil.example' })).status, 403);
+  const saved = await call('/api/projects/' + p.id, 'PUT', { revision: p.revision, design: p.design, logoDataUrl: '', fontAssets: { body: meta } }); assert.equal(saved.status, 200);
+  const other = await (await call('/api/projects', 'POST', { design: fixture() })).json();
+  assert.equal((await call('/api/projects/' + other.id, 'PUT', { revision: other.revision, design: other.design, logoDataUrl: '', fontAssets: { body: meta } })).status, 400);
+  const data = Buffer.from(await (await call('/api/projects/' + p.id + '/export.zip')).arrayBuffer()), files = {};
+  let offset = 0;
+  while (data.readUInt32LE(offset) === 0x04034b50) { const length = data.readUInt32LE(offset + 18), nameLength = data.readUInt16LE(offset + 26), extra = data.readUInt16LE(offset + 28), start = offset + 30 + nameLength + extra; files[data.subarray(offset + 30, offset + 30 + nameLength).toString()] = data.subarray(start, start + length); offset = start + length; }
+  assert.deepEqual(files['assets/font-body.ttf'], bytes); assert.ok(files['tokens.css'].toString().includes('DS-body'));
+  const imported = JSON.parse(files['tokens.json']); assert.equal(imported.fontFiles.body.dataUrl, font.dataUrl);
+  const copy = await (await call('/api/projects', 'POST', imported)).json(); assert.notEqual(copy.id, p.id); assert.notEqual(copy.fontAssets.body.id, meta.id);
+  const copied = await call('/api/fonts/' + copy.fontAssets.body.id); assert.deepEqual(Buffer.from(await copied.arrayBuffer()), bytes);
 });
 test('AI cancellation stops a pending job and duplicate calls are rejected without changing the design', async t => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'design-cancel-'));

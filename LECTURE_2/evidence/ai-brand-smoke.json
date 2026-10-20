@@ -1,0 +1,28 @@
+[
+  {
+    "provider": "codex",
+    "jobId": "8d090e03-97e4-403f-bcc1-74e400fab9f4",
+    "projectId": "8ece91f0-1895-4108-b107-0c7690acff08",
+    "status": "completed",
+    "durationSeconds": 16,
+    "message": "AI 제안이 도착했습니다. 변경 내용을 확인하고 적용하세요.",
+    "completedAt": "2026-10-20T14:16:05.527Z",
+    "schemaValidated": true,
+    "fontSourcePreserved": true,
+    "sourcePreserved": true,
+    "originalUnchanged": true
+  },
+  {
+    "provider": "claude",
+    "jobId": "e4abfc5e-4ad7-4af7-b935-9a774ed094f5",
+    "projectId": "f97542c2-1130-4a3d-bc52-f7e41ccd64f8",
+    "status": "completed",
+    "durationSeconds": 14,
+    "message": "AI 제안이 도착했습니다. 변경 내용을 확인하고 적용하세요.",
+    "completedAt": "2026-10-20T14:16:19.613Z",
+    "schemaValidated": true,
+    "fontSourcePreserved": true,
+    "sourcePreserved": true,
+    "originalUnchanged": true
+  }
+]

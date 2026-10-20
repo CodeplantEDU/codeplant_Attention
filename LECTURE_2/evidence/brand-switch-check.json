@@ -1,0 +1,10 @@
+{
+  "test": "delayed font upload followed by project switch",
+  "pass": true,
+  "projectIds": [
+    "eee38a45-8c48-46ef-8512-4629778a679a",
+    "37b1ff02-2d4d-47bb-8172-9a0a2a07ad67"
+  ],
+  "originalAndDestinationUnchanged": true,
+  "checkedAt": "2026-10-20T14:23:58.527Z"
+}

@@ -1,0 +1,28 @@
+{
+  "feedback": "대표 행동이 선택됐습니다.",
+  "fonts": [
+    {
+      "family": "Pretendard",
+      "status": "unloaded"
+    },
+    {
+      "family": "Pretendard",
+      "status": "unloaded"
+    },
+    {
+      "family": "Pretendard",
+      "status": "unloaded"
+    },
+    {
+      "family": "DS-body",
+      "status": "loaded"
+    },
+    {
+      "family": "DS-heading",
+      "status": "loaded"
+    }
+  ],
+  "errors": [],
+  "viewport": 1440,
+  "checkedAt": "2026-10-20T14:18:48.676Z"
+}

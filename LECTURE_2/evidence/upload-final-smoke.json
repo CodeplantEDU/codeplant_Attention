@@ -1,0 +1,12 @@
+{
+  "testedAt": "2026-10-21T03:18:10.707Z",
+  "serverRestarted": true,
+  "health": {
+    "service": "codeplant-design-studio",
+    "workspace": "8a574743e039e8e0"
+  },
+  "legacyDraftWithoutReferences": true,
+  "referencesPreserved": 1,
+  "pageErrors": [],
+  "actualAiCall": false
+}

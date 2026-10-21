@@ -5,8 +5,24 @@ const $ = s => document.querySelector(s);
 let token = '', project = null, projects = [], providers = [], step = 0, tab = 'brand', edit = 0, saved = 0;
 let saving = null, saveTimer, previewTimer, toastTimer, pollTimer, currentJob = null, undo = null, instruction = '', provider = 'codex', reviewed = false;
 const invalid = new Set(), fontCache = new Map();
+let uploading = false;
+const uploadQueue = [];
+const REFERENCE_ACCEPT = '.pdf,.docx,.pptx,.xlsx,.hwpx,.hwp,.txt,.md,.csv,.json,.css,.png,.jpg,.jpeg,.webp';
 const TABS = [['brand', '로고·심볼'], ['colors', '색상'], ['type', '글꼴'], ['layout', '여백·형태'], ['rules', '사용 규칙']];
-function assetSnapshot(p = project) { return { ...Object.fromEntries(Object.keys(ASSET_LABELS).map(k => [k, p[k] || ''])), fontAssets: structuredClone(p.fontAssets || {}) }; }
+function assetSnapshot(p = project) { return { ...Object.fromEntries(Object.keys(ASSET_LABELS).map(k => [k, p[k] || ''])), fontAssets: structuredClone(p.fontAssets || {}), references: structuredClone(p.references || []) }; }
+function dropZone(id, label, help, attributes, multiple = false) {
+  return `<div class="drop-zone" data-drop="${id}" aria-label="${label} 업로드 영역"><span class="drop-mark" aria-hidden="true">↑</span><strong>${label}</strong><p>${multiple ? '파일 여러 개를 여기에 끌어다 놓으세요' : '파일 하나를 여기에 끌어다 놓으세요'}</p><button type="button" class="button upload-button" data-pick="${id}" aria-describedby="${id}-help">${label} 파일 선택</button><input class="file-input" id="${id}" type="file" aria-label="${label} 파일 선택" tabindex="-1" ${multiple ? 'multiple' : ''} ${attributes}><p class="helper" id="${id}-help">${help}</p></div>`;
+}
+function referencePanel() {
+  return `${dropZone('reference-file', '참고 문서·이미지', 'PDF·Word(DOCX)·PPT(PPTX)·Excel(XLSX)·HWPX·HWP<br>TXT·MD·CSV·JSON·CSS·PNG·JPG·WebP<br>파일당 15 MB · 최대 20개 · 합계 60 MB', `accept="${REFERENCE_ACCEPT}"`, true)}<p class="helper">읽을 수 있는 본문만 디자인 제안에 참고합니다. PDF는 처음 200페이지, 파일당 24,000자, AI에는 합계 60,000자까지 전달합니다. 이미지·도표·스캔 페이지와 HWP 본문은 자동 해석하지 않습니다. HWP는 HWPX 또는 PDF로 바꾸면 본문을 읽을 수 있습니다.</p><div id="reference-list"></div><div id="upload-queue" role="status" aria-live="polite"></div><p class="helper">원본은 이 PC에 보관하며 ZIP에 포함합니다. 참고 파일을 빼면 다음 AI 요청과 내보내기에서 제외됩니다.</p>`;
+}
+function fileSize(bytes) { return bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(2)} MB`; }
+function renderReferences() {
+  const host = $('#reference-list');
+  if (host) host.innerHTML = (project.references || []).map(f => `<article class="reference-card"><div class="reference-heading"><strong>${h(f.name)}</strong><span class="reference-status ${f.text ? 'read' : ''}">${f.status === 'text-only' ? '추출문만 가져옴' : f.text ? '텍스트 추출됨' : '원본만 보관'}</span></div><p class="helper">${f.originalAvailable ? `${fileSize(f.size)} · 원본 보관 · ` : '원본 없음 · '}${(f.text || '').length.toLocaleString()}자</p><p class="helper">${h(f.warning || '읽을 수 있는 텍스트를 추출했습니다.')}</p>${f.text ? `<details><summary>추출문 확인</summary><pre>${h(f.text)}</pre></details>` : ''}<div class="reference-actions">${f.originalAvailable ? `<a href="/api/projects/${project.id}/references/${f.id}" download>원본 받기</a>` : ''}<button class="text-button" data-remove-reference="${f.id}" aria-label="${h(f.name)} 참고에서 빼기">참고에서 빼기</button></div></article>`).join('');
+  const queue = $('#upload-queue');
+  if (queue) queue.innerHTML = uploadQueue.map(item => `<div class="upload-result ${item.state === 'failed' ? 'failed' : ''}"><strong>${h(item.file.name)}</strong><span>${h(item.message)}</span>${item.state === 'failed' ? `<div class="reference-actions"><button class="text-button" data-retry-upload="${item.id}">다시 시도</button><button class="text-button" data-dismiss-upload="${item.id}">목록에서 지우기</button></div>` : ''}</div>`).join('');
+}
 function asDataUrl(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(Error('파일을 읽지 못했습니다.')); reader.readAsDataURL(blob); }); }
 async function fontFilesFor(p) { const files = {}; for (const [role, asset] of Object.entries(p.fontAssets || {})) { if (!fontCache.has(asset.id)) { const r = await fetch('/api/fonts/' + asset.id); if (!r.ok) throw Error('글꼴 원본을 읽지 못했습니다. 원본 파일을 다시 넣거나 서버 연결을 확인하세요.'); fontCache.set(asset.id, await asDataUrl(await r.blob())); } files[role] = { name: asset.name, dataUrl: fontCache.get(asset.id) }; } return files; }
 const handoffPrompt = '이 폴더의 DESIGN.md와 tokens.json, tokens.css를 읽고 내 디자인 시스템을 적용하는 재사용 가능한 Codex 스킬을 만들어줘. 미리보기의 예시 문장을 실제 사업 사실로 사용하지 마. 원본 규칙과 assets를 보존하고, 빠진 정보는 질문하거나 미입력으로 남겨줘. SKILL.md를 만든 뒤 실제 결과물에 적용해 검수해줘.';
@@ -15,13 +31,13 @@ const NUMBER_LABELS = { baseSize: ['본문 글자', '14~22 px'], headingSize: ['
 Object.assign(NUMBER_LABELS, { logoClearSpace: ['로고 보호 여백', '상하좌우 각각 px · 시작 제안값 12'], logoMinWidth: ['로고 최소 가로 너비', 'px · 원본 비율로 세로 크기 결정'], symbolMinSize: ['심볼 최소 배치 영역', '가로 × 세로 px · 원본 비율 유지'], bodyWeight: ['본문 굵기', '100~900 · 100 단위'], headingWeight: ['제목 굵기', '100~900 · 100 단위'], headingLineHeight: ['제목 줄 높이', '글자 크기의 1.1~1.8 배'], letterSpacing: ['자간', '-2~4 px'], labelSize: ['입력 제목 크기', '11~20 px'], captionSize: ['주석 크기', '10~18 px'] });
 
 function brandPanel() {
-  return `<p class="helper">모든 파일은 선택입니다. 없는 자산은 미지정으로 남깁니다. 아래 크기·여백의 시작값은 실습용 제안값이며 공식 브랜드 규격이 아닙니다.</p>${Object.entries(ASSET_LABELS).map(([key, label]) => `<section class="asset-card"><h2>${label} <span class="optional">선택</span></h2><p class="helper">${key === 'logoDataUrl' ? '밝은 배경의 헤더·문서 표지 등 대표 위치에 사용합니다.' : key === 'darkLogoDataUrl' ? '어두운 배경에서도 읽히도록 별도로 준비한 원본을 넣습니다. 자동 반전하지 않습니다.' : '앱 아이콘·좁은 헤더 등 작은 공간에서 사용할 심볼 원본을 넣습니다.'}</p><div class="asset-image ${key === 'darkLogoDataUrl' ? 'dark' : ''}">${project[key] ? `<img src="${h(project[key])}" alt="${label} 원본">` : '<span>지정한 파일 없음</span>'}</div><div class="upload-row"><label class="upload-label">${label} 파일 선택<input class="file-input" type="file" data-image="${key}" accept="image/png,image/jpeg,image/webp"></label>${project[key] ? `<button class="text-button" data-remove-image="${key}">${label} 빼기</button>` : ''}</div></section>`).join('')}<p class="helper">PNG·JPG·WebP / 파일당 2 MB 이하. 색상·비율을 자동 변경하지 않습니다.</p>${numbers(['logoClearSpace', 'logoMinWidth', 'symbolMinSize'])}${field('logoUsage', { rows: 3, placeholder: '예: 기본 로고는 밝은 헤더 왼쪽, 어두운 배경용은 진한 표지에만 사용. 제공된 실제 기준이 있으면 기록하세요.' })}${field('symbolUsage', { rows: 3, placeholder: '예: 좁은 모바일 헤더와 앱 아이콘. 단독 사용 가능한 위치와 크기를 적어 주세요.' })}${field('logoAvoid', { rows: 3 })}`;
+  return `<p class="helper">모든 파일은 선택입니다. 없는 자산은 미지정으로 남깁니다. 아래 크기·여백의 시작값은 실습용 제안값이며 공식 브랜드 규격이 아닙니다.</p>${Object.entries(ASSET_LABELS).map(([key, label]) => `<section class="asset-card"><h2>${label} <span class="optional">선택</span></h2><p class="helper">${key === 'logoDataUrl' ? '밝은 배경의 헤더·문서 표지 등 대표 위치에 사용합니다.' : key === 'darkLogoDataUrl' ? '어두운 배경에서도 읽히도록 별도로 준비한 원본을 넣습니다. 자동 반전하지 않습니다.' : '앱 아이콘·좁은 헤더 등 작은 공간에서 사용할 심볼 원본을 넣습니다.'}</p>${project[key] ? `<div class="asset-image ${key === 'darkLogoDataUrl' ? 'dark' : ''}"><img src="${h(project[key])}" alt="${label} 원본"></div>` : ''}${dropZone('image-' + key, label, 'PNG·JPG·WebP · 2 MB 이하<br>이 영역에는 이 역할의 파일만 넣으세요. 다시 넣으면 교체합니다.', `data-image="${key}" accept="image/png,image/jpeg,image/webp"`)}${project[key] ? `<button class="text-button" data-remove-image="${key}">${label} 빼기</button>` : ''}</section>`).join('')}<p class="helper">색상·비율을 자동 변경하지 않습니다.</p>${numbers(['logoClearSpace', 'logoMinWidth', 'symbolMinSize'])}${field('logoUsage', { rows: 3, placeholder: '예: 기본 로고는 밝은 헤더 왼쪽, 어두운 배경용은 진한 표지에만 사용. 제공된 실제 기준이 있으면 기록하세요.' })}${field('symbolUsage', { rows: 3, placeholder: '예: 좁은 모바일 헤더와 앱 아이콘. 단독 사용 가능한 위치와 크기를 적어 주세요.' })}${field('logoAvoid', { rows: 3 })}`;
 }
 function typographyPanel() {
   const d = project.design;
   return ['body', 'heading'].map(role => {
     const key = role === 'body' ? 'fontFamily' : 'headingFontFamily', label = role === 'body' ? '본문' : '제목', asset = project.fontAssets?.[role];
-    return `<section class="asset-card"><h2>${label} 글꼴</h2><div class="field"><label for="font-${role}">${label} 글꼴 이름</label><input id="font-${role}" data-font-name="${key}" value="${h(d[key])}" list="fonts-${role}" maxlength="80" aria-describedby="font-help-${role} font-error-${role}"><datalist id="fonts-${role}">${[...FONTS, 'Noto Sans KR', 'Nanum Gothic'].map(f => `<option value="${f}"></option>`).join('')}</datalist><p class="helper" id="font-help-${role}">목록에서 고르거나 직접 입력하세요. 파일 없이 이름만 지정하면 이 PC의 설치 여부에 따라 대체 글꼴이 보일 수 있습니다.</p><span id="font-error-${role}" class="field-error" data-error="${key}" hidden>한글·영문·숫자·공백·마침표·밑줄·하이픈으로 입력하세요.</span></div><div class="upload-row"><label class="upload-label">${label} 글꼴 파일 선택 <span class="optional">(선택)</span><input class="file-input" type="file" data-font="${role}" accept=".ttf,.otf,.woff,.woff2"></label>${asset ? `<button class="text-button" data-remove-font="${role}">${label} 글꼴 파일 빼기</button>` : ''}</div><p class="helper">${asset ? `현재 파일: ${h(asset.name)} · 미리보기의 로딩 상태를 확인하세요.` : '글꼴 파일 미지정 · Pretendard는 기본 포함됩니다.'}</p></section>`;
+    return `<section class="asset-card"><h2>${label} 글꼴</h2><div class="field"><label for="font-${role}">${label} 글꼴 이름</label><input id="font-${role}" data-font-name="${key}" value="${h(d[key])}" list="fonts-${role}" maxlength="80" aria-describedby="font-help-${role} font-error-${role}"><datalist id="fonts-${role}">${[...FONTS, 'Noto Sans KR', 'Nanum Gothic'].map(f => `<option value="${f}"></option>`).join('')}</datalist><p class="helper" id="font-help-${role}">목록에서 고르거나 직접 입력하세요. 파일 없이 이름만 지정하면 이 PC의 설치 여부에 따라 대체 글꼴이 보일 수 있습니다.</p><span id="font-error-${role}" class="field-error" data-error="${key}" hidden>한글·영문·숫자·공백·마침표·밑줄·하이픈으로 입력하세요.</span></div>${dropZone('file-font-' + role, label + ' 글꼴', 'TTF·OTF·WOFF·WOFF2 · 5 MB 이하<br>파일 없이 이름만 지정해도 됩니다. 다시 넣으면 교체합니다.', `data-font="${role}" accept=".ttf,.otf,.woff,.woff2"`)}${asset ? `<button class="text-button" data-remove-font="${role}">${label} 글꼴 파일 빼기</button>` : ''}<p class="helper">${asset ? `현재 파일: ${h(asset.name)} · 미리보기의 로딩 상태를 확인하세요.` : '글꼴 파일 미지정 · Pretendard는 기본 포함됩니다.'}</p></section>`;
   }).join('') + `<p class="helper">TTF·OTF·WOFF·WOFF2 / 파일당 5 MB 이하. 업로드한 파일의 실제 모양과 지원 굵기를 사용합니다. 여러 굵기가 필요하면 가변 글꼴을 권장합니다. 출처·라이선스는 아래에 직접 기록하세요.</p>${numbers(['baseSize', 'bodyWeight', 'lineHeight', 'headingSize', 'headingWeight', 'headingLineHeight', 'labelSize', 'captionSize', 'letterSpacing'])}${field('fontUsage', { rows: 3 })}${field('fontSource', { rows: 3, placeholder: '본문/제목 글꼴의 배포처 주소, 라이선스 이름, 웹·문서·재배포 가능 범위를 확인한 내용만 기록하세요.' })}`;
 }
 
@@ -71,7 +87,7 @@ function actions() {
 function aiBox() {
   const choices = providers.length ? providers.map(p => `<option value="${p.id}" ${p.id === provider ? 'selected' : ''}>${h(p.label)} · ${p.loggedIn ? '로그인 확인' : p.installed ? '로그인 필요' : '설치 필요'}</option>`).join('') : '<option value="codex">Codex · 확인 중</option><option value="claude">Claude Code · 확인 중</option>';
   const running = currentJob && ['running', 'cancelling'].includes(currentJob.status);
-  return `<div class="ai-box"><h2>AI와 함께 정리해 볼까요?</h2><p>기획과 참고 글을 바탕으로 디자인 규칙을 제안받습니다.<br>지금 값은 유지되고, 변경 내용을 확인한 뒤 적용합니다.</p><div class="field"><label for="ai-instruction">추가로 부탁할 내용 <span class="optional">선택</span></label><textarea id="ai-instruction" maxlength="4000" placeholder="예: 본문이 잘 읽히도록 색상 대비와 글자 크기를 다듬어줘.">${h(instruction)}</textarea></div><div class="ai-controls"><select id="ai-provider" aria-label="디자인 규칙을 제안할 AI">${choices}</select><button id="generate" class="button primary" ${running ? 'disabled' : ''}>AI 초안 제안받기</button></div><p class="helper">이름과 서비스 목적을 먼저 적어 주세요. 요청 시 이 기획·참고 글·현재 규칙이 선택한 AI에 전달되며 계정 사용량을 소비합니다. 참고 주소는 자동으로 읽지 않습니다.</p><div id="job-status"></div>${undo ? '<button id="undo" class="text-button">마지막 AI 제안 적용 취소</button>' : ''}</div>`;
+  return `<div class="ai-box"><h2>AI와 함께 정리해 볼까요?</h2><p>기획과 참고 글을 바탕으로 디자인 규칙을 제안받습니다.<br>지금 값은 유지되고, 변경 내용을 확인한 뒤 적용합니다.</p><div class="field"><label for="ai-instruction">추가로 부탁할 내용 <span class="optional">선택</span></label><textarea id="ai-instruction" maxlength="4000" placeholder="예: 본문이 잘 읽히도록 색상 대비와 글자 크기를 다듬어줘.">${h(instruction)}</textarea></div><div class="ai-controls"><select id="ai-provider" aria-label="디자인 규칙을 제안할 AI">${choices}</select><button id="generate" class="button primary" ${running ? 'disabled' : ''}>AI 초안 제안받기</button></div><p class="helper">이름과 서비스 목적을 먼저 적어 주세요. 요청 시 이 기획·참고 글·첨부 파일의 추출문·현재 규칙이 선택한 AI에 전달되며 계정 사용량을 소비합니다. 참고 주소는 자동으로 읽지 않습니다.</p><div id="job-status"></div>${undo ? '<button id="undo" class="text-button">마지막 AI 제안 적용 취소</button>' : ''}</div>`;
 }
 function renderJob() {
   const host = $('#job-status'); if (!host) return;
@@ -85,7 +101,7 @@ function render() {
   const d = project.design;
   document.querySelectorAll('.step').forEach((button, index) => { button.classList.toggle('active', index === step); if (index === step) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current'); });
   let content = `<p class="page-number"><span>0${step + 1}</span> ${['방향 정하기', '디자인 규칙', '적용해 보기', '자료 내보내기'][step]}</p>`;
-  if (step === 0) content += `<h1 class="hero-title">흩어진 생각을,<br>하나의 디자인으로.</h1><p class="lede">누구를 위한 서비스인지부터 시작하세요.<br>내가 정한 기준이 색상과 글꼴, 화면의 규칙이 됩니다.</p><div class="starter-note"><b>처음이어도, 여기서 시작하면 됩니다.</b>CODEPLANT 기본값을 준비했어요. 기획에 맞춰 자유롭게 바꾸고 나만의 디자인 시스템으로 완성하세요.</div>${field('name', { required: true, placeholder: '예: 우리 동아리의 디자인 시스템' })}${field('purpose', { rows: 3, required: true, placeholder: '어떤 서비스를 만들고 싶나요? 사용자가 무엇을 할 수 있으면 좋을까요?' })}<div class="two-columns">${field('audience', { placeholder: '예: 처음 코딩을 배우는 학생' })}${field('voice', { placeholder: '예: 차분하고 이해하기 쉬운' })}</div><div class="section-title"><h2>참고 자료를 모아 주세요</h2><span class="optional">선택</span></div>${field('sources', { rows: 4, placeholder: '이미 정한 브랜드 규칙, 마음에 드는 이유, 반드시 지켜야 할 기준을 적어 주세요.' })}${field('sourceUrl', { placeholder: 'https://', helper: '주소는 출처로 기록합니다. 자동으로 방문하지 않으니 필요한 내용은 위에 붙여 넣으세요.' })}<div class="upload-row"><label class="upload-label">+ 참고 글 추가<input class="file-input" id="source-file" type="file" accept=".md,.txt,.css,.json"></label><label class="upload-label">+ 내 로고 넣기<input class="file-input" id="logo-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label class="upload-label">편집 JSON 가져오기<input class="file-input" id="import-file" type="file" accept=".json"></label></div><p class="helper">참고 글: MD·TXT·CSS·JSON / 100 KB 이하 · 로고: PNG·JPG·WebP / 2 MB 이하<br>편집 JSON은 이 서비스에서 내보낸 파일을 새 디자인으로 엽니다.<br>심볼·배경별 로고와 상세 규격은 다음 단계의 ‘로고·심볼’에서 지정합니다.</p><div id="logo-state"></div>${aiBox()}`;
+  if (step === 0) content += `<h1 class="hero-title">흩어진 생각을,<br>하나의 디자인으로.</h1><p class="lede">누구를 위한 서비스인지부터 시작하세요.<br>내가 정한 기준이 색상과 글꼴, 화면의 규칙이 됩니다.</p><div class="starter-note"><b>처음이어도, 여기서 시작하면 됩니다.</b>CODEPLANT 기본값을 준비했어요. 기획에 맞춰 자유롭게 바꾸고 나만의 디자인 시스템으로 완성하세요.</div>${field('name', { required: true, placeholder: '예: 우리 동아리의 디자인 시스템' })}${field('purpose', { rows: 3, required: true, placeholder: '어떤 서비스를 만들고 싶나요? 사용자가 무엇을 할 수 있으면 좋을까요?' })}<div class="two-columns">${field('audience', { placeholder: '예: 처음 코딩을 배우는 학생' })}${field('voice', { placeholder: '예: 차분하고 이해하기 쉬운' })}</div><div class="section-title"><h2>참고 자료를 모아 주세요</h2><span class="optional">선택</span></div>${field('sources', { rows: 4, placeholder: '이미 정한 브랜드 규칙, 마음에 드는 이유, 반드시 지켜야 할 기준을 적어 주세요.' })}${field('sourceUrl', { placeholder: 'https://', helper: '주소는 출처로 기록합니다. 자동으로 방문하지 않으니 필요한 내용은 위에 붙여 넣으세요.' })}${referencePanel()}<div class="asset-next"><b>로고와 심볼은 각각 지정하세요</b><p class="helper">다음 단계에서 기본 로고·어두운 배경용 로고·심볼과 본문·제목 글꼴을 따로 넣습니다.</p><button class="button secondary" data-go="1">로고·심볼 지정하기</button></div><details class="import-panel"><summary>이전에 만든 편집 JSON 가져오기</summary>${dropZone('import-file', '편집 JSON', '이 서비스의 tokens.json 또는 design-backup.json · 32 MB 이하<br>새 디자인으로 엽니다. 참고 문서 원본은 JSON에 없으므로 다시 첨부하세요.', 'accept=".json"')}</details>${aiBox()}`;
   if (step === 1) {
     content += `<h1 class="page-title">반복해서 쓸 수 있는,<br>나만의 디자인 규칙.</h1><p class="lede">한 곳을 바꾸면 오른쪽 화면도 함께 달라집니다.<br>마음에 드는 값과 사용할 이유를 남겨 보세요.</p><div class="tabs" role="tablist" aria-label="디자인 규칙 종류">${TABS.map(([k, v]) => `<button id="tab-${k}" role="tab" tabindex="${tab === k ? 0 : -1}" aria-selected="${tab === k}" aria-controls="token-panel" data-tab="${k}" class="${tab === k ? 'active' : ''}">${v}</button>`).join('')}</div><div id="token-panel" role="tabpanel" aria-labelledby="tab-${tab}">`;
     if (tab === 'brand') content += brandPanel();
@@ -101,17 +117,13 @@ function render() {
   }
   if (step === 3) {
     const warnings = checks(d).filter(x => !x.pass);
-    content += `<h1 class="page-title">이제, 내 디자인을<br>다음 작업으로 가져가세요.</h1><p class="lede">규칙과 편집 데이터, 확인용 화면을 함께 묶습니다.<br>압축을 풀어 Codex에서 최종 스킬을 이어서 만드세요.</p><div class="starter-note"><b>여기서는 디자인 시스템 자료가 완성됩니다.</b>최종 SKILL.md는 이 서비스에서 만들지 않습니다. 아래 자료를 Codex에 전달해 제작하세요.</div><div class="section-title"><h2>하나의 ZIP에 담기는 자료</h2></div>${[['DESIGN.md', '목적·색상·글꼴·컴포넌트·출처를 담은 한국어 규칙'], ['tokens.json', '나중에 이 서비스에서 다시 편집할 수 있는 데이터'], ['tokens.css', '구현에 그대로 사용할 수 있는 CSS 변수'], ['preview.html', '디자인이 적용된 화면과 컴포넌트 상태 예시'], ['CODEX-HANDOFF.md', 'Codex에서 스킬 제작을 이어가는 방법'], ['assets/', '로고·심볼·글꼴 원본과 Pretendard 라이선스']].map(([name, desc]) => `<div class="file-row"><code>${name}</code><small>${desc}</small></div>`).join('')}${warnings.length ? `<p class="starter-note" style="margin-top:20px">대비 수정 권장: ${warnings.map(x => h(x.label)).join(', ')}. 자료에도 점검 결과가 기록됩니다.</p>` : ''}<label class="confirm-label"><input id="reviewed" type="checkbox" ${reviewed ? 'checked' : ''}><span>디자인 규칙과 참고 출처, 적용 화면을 확인했습니다.</span></label><div class="download-actions"><button id="download-zip" class="button primary" ${reviewed ? '' : 'disabled'}>디자인 시스템 ZIP 받기 <span aria-hidden="true">↓</span></button><button id="download-md" class="button secondary" ${reviewed ? '' : 'disabled'}>규칙 문서만 받기</button></div><div class="section-title"><h2>Codex에 이렇게 요청하세요</h2><button id="copy-handoff" class="text-button">요청문 복사</button></div><div class="handoff-text">${h(handoffPrompt)}</div><p class="helper">압축을 푼 폴더를 Codex에서 먼저 열어 주세요. 이 앱의 제작 화면과 사용자 디자인 자료는 별개이며, CODEPLANT 로고는 내보내기에 자동으로 넣지 않습니다.</p>`;
+    content += `<h1 class="page-title">이제, 내 디자인을<br>다음 작업으로 가져가세요.</h1><p class="lede">규칙과 편집 데이터, 확인용 화면을 함께 묶습니다.<br>압축을 풀어 Codex에서 최종 스킬을 이어서 만드세요.</p><div class="starter-note"><b>여기서는 디자인 시스템 자료가 완성됩니다.</b>최종 SKILL.md는 이 서비스에서 만들지 않습니다. 아래 자료를 Codex에 전달해 제작하세요.</div><div class="section-title"><h2>하나의 ZIP에 담기는 자료</h2></div>${[['DESIGN.md', '목적·색상·글꼴·컴포넌트·출처를 담은 한국어 규칙'], ['tokens.json', '나중에 이 서비스에서 다시 편집할 수 있는 데이터'], ['tokens.css', '구현에 그대로 사용할 수 있는 CSS 변수'], ['preview.html', '디자인이 적용된 화면과 컴포넌트 상태 예시'], ['CODEX-HANDOFF.md', 'Codex에서 스킬 제작을 이어가는 방법'], ['assets/', '로고·심볼·글꼴 원본과 Pretendard 라이선스'], ['references/', '첨부 참고 원본과 파일별 출처·읽기 상태 목록']].map(([name, desc]) => `<div class="file-row"><code>${name}</code><small>${desc}</small></div>`).join('')}${warnings.length ? `<p class="starter-note" style="margin-top:20px">대비 수정 권장: ${warnings.map(x => h(x.label)).join(', ')}. 자료에도 점검 결과가 기록됩니다.</p>` : ''}<label class="confirm-label"><input id="reviewed" type="checkbox" ${reviewed ? 'checked' : ''}><span>디자인 규칙과 참고 출처, 적용 화면을 확인했습니다.</span></label><p class="helper">ZIP에는 참고 문서 원본을 포함합니다. tokens.json·JSON 백업은 추출문만 포함하므로, JSON에서 다시 열 때 참고 원본을 재첨부하세요.</p><div class="download-actions"><button id="download-zip" class="button primary" ${reviewed ? '' : 'disabled'}>디자인 시스템 ZIP 받기 <span aria-hidden="true">↓</span></button><button id="download-md" class="button secondary" ${reviewed ? '' : 'disabled'}>규칙 문서만 받기</button></div><div class="section-title"><h2>Codex에 이렇게 요청하세요</h2><button id="copy-handoff" class="text-button">요청문 복사</button></div><div class="handoff-text">${h(handoffPrompt)}</div><p class="helper">압축을 푼 폴더를 Codex에서 먼저 열어 주세요. 이 앱의 제작 화면과 사용자 디자인 자료는 별개이며, CODEPLANT 로고는 내보내기에 자동으로 넣지 않습니다.</p>`;
   }
   $('#editor-content').innerHTML = content + actions();
-  renderLogo(); renderJob(); updatePreview(); renderProjects();
+  renderReferences(); renderJob(); updatePreview(); renderProjects();
 }
 function numbers(keys) {
   return keys.map(k => `<div class="number-field"><label for="n-${k}">${NUMBER_LABELS[k][0]}<small>${NUMBER_LABELS[k][1]}</small></label><div><input id="n-${k}" type="number" data-number="${k}" value="${project.design[k]}" min="${NUMBER_RULES[k][0]}" max="${NUMBER_RULES[k][1]}" step="${['lineHeight', 'headingLineHeight', 'letterSpacing'].includes(k) ? '.1' : k.endsWith('Weight') ? '100' : '1'}"><span class="field-error" data-error="${k}" hidden>범위를 확인하세요.</span></div></div>`).join('');
-}
-function renderLogo() {
-  const host = $('#logo-state'); if (!host) return;
-  host.innerHTML = project.logoDataUrl ? `<div class="logo-preview"><img src="${h(project.logoDataUrl)}" alt="내가 넣은 프로젝트 로고"><button id="remove-logo" class="text-button">로고 빼기</button></div>` : '';
 }
 function renderProjects() {
   $('#projects').innerHTML = projects.map(p => `<button data-project="${p.id}" class="project-link ${p.id === project?.id ? 'selected' : ''}" ${p.error ? 'disabled' : ''} title="${h(p.name)}">${h(p.name)}</button>`).join('');
@@ -135,22 +147,22 @@ function download(data, name, type) {
   const blob = data instanceof Blob ? data : new Blob([data], { type }); const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 async function copy(text) { try { await navigator.clipboard.writeText(text); toast('복사했습니다.'); } catch { throw Error('클립보드를 사용할 수 없습니다. 표시된 요청문이나 명령을 직접 선택해 복사하세요.'); } }
-async function backup() { download(JSON.stringify({ schemaVersion: 1, design: project.design, ...assetSnapshot(), fontAssets: undefined, fontFiles: await fontFilesFor(project) }, null, 2), 'design-backup.json', 'application/json'); toast('현재 편집값의 JSON 백업을 내려받았습니다.'); }
+async function backup() { download(JSON.stringify({ schemaVersion: 1, design: project.design, ...assetSnapshot(), fontAssets: undefined, references: undefined, referenceTexts: (project.references || []).map(({ name, text, warning }) => ({ name, text, warning })), fontFiles: await fontFilesFor(project) }, null, 2), 'design-backup.json', 'application/json'); toast('현재 편집값의 JSON 백업을 내려받았습니다.'); }
 async function newProject(design = initialDesign(), logoDataUrl = '', extra = {}) {
   await flush(); const p = await api('/api/projects', { method: 'POST', body: JSON.stringify({ design, logoDataUrl, ...extra }) });
-  p.design = validateDesign(p.design); p.fontAssets ||= {};
-  project = p; try { localStorage.setItem('codeplant-design-active', p.id); } catch {}
+  p.design = validateDesign(p.design); p.fontAssets ||= {}; p.references ||= [];
+  project = p; uploadQueue.length = 0; try { localStorage.setItem('codeplant-design-active', p.id); } catch {}
   projects.unshift({ id: p.id, name: p.design.name || '이름 없는 디자인', revision: p.revision, updatedAt: p.updatedAt }); edit = saved = 0; step = 0; undo = null; currentJob = null; reviewed = false; invalid.clear(); render(); saveState('이 PC에 저장됨');
 }
 async function openProject(id) {
   await flush(); clearTimeout(pollTimer); const p = await api('/api/projects/' + id);
-  p.design = validateDesign(p.design); p.fontAssets ||= {};
-  project = p; try { localStorage.setItem('codeplant-design-active', p.id); } catch {}
+  p.design = validateDesign(p.design); p.fontAssets ||= {}; p.references ||= [];
+  project = p; uploadQueue.length = 0; try { localStorage.setItem('codeplant-design-active', p.id); } catch {}
   edit = saved = 0; step = 0; undo = null; currentJob = null; reviewed = false; invalid.clear();
   try {
     const draft = JSON.parse(localStorage.getItem('codeplant-design-draft-' + id) || 'null');
     if (draft && draft.editedAt > p.updatedAt) {
-      if (draft.revision === p.revision) { project.design = validateDesign(draft.design); Object.assign(project, assetSnapshot(draft)); edit++; toast('저장되지 않았던 이 브라우저의 편집값을 복구했습니다. 지금 저장을 눌러 주세요.'); }
+      if (draft.revision === p.revision) { project.design = validateDesign(draft.design); Object.assign(project, assetSnapshot({ ...p, ...draft, references: draft.references ?? p.references })); edit++; toast('저장되지 않았던 이 브라우저의 편집값을 복구했습니다. 지금 저장을 눌러 주세요.'); }
       else showError('이 브라우저의 임시 편집본과 서버 자료가 다릅니다. 서버 자료를 열었습니다. 다른 탭의 편집값을 먼저 JSON으로 백업하세요.');
     }
   } catch { showError('브라우저 임시 편집본을 읽지 못했습니다. 서버에 저장된 자료를 열었습니다.'); }
@@ -214,44 +226,81 @@ document.addEventListener('input', event => {
   target.setAttribute('aria-invalid', String(!valid)); valid ? invalid.delete(key) : invalid.add(key);
   changed();
 });
-document.addEventListener('change', async event => {
-  const target = event.target;
-  if (target.id === 'ai-provider') { provider = target.value; return; }
-  const file = target.files?.[0]; if (!file) return;
+async function handleFiles(target, files) {
+  if (!project || !files.length) return;
+  if (uploading) { toast('지금 파일을 처리하고 있습니다. 끝난 뒤 추가해 주세요.'); return; }
+  if (target.id !== 'reference-file' && files.length !== 1) { showError('이 영역에는 파일 하나만 넣으세요. 역할별 영역에서 각각 지정할 수 있습니다.'); return; }
   const ownerId = project.id;
-  const ensureCurrent = () => { if (project.id !== ownerId) throw Error('파일을 읽는 동안 다른 디자인으로 이동했습니다. 원래 디자인에서 다시 파일을 선택하세요.'); };
-  target.disabled = true; target.closest('label')?.setAttribute('aria-busy', 'true');
+  const ensureCurrent = () => { if (project.id !== ownerId) throw Error('다른 디자인으로 이동했습니다. 원래 디자인에서 다시 파일을 선택하세요.'); };
+  uploading = true; target.disabled = true;
+  document.querySelectorAll('[data-pick]').forEach(b => b.disabled = true);
+  const activity = $('#upload-activity'); activity.hidden = false;
   try {
-    if (target.id === 'source-file') {
-      if (!/\.(md|txt|css|json)$/i.test(file.name)) throw Error('참고 글은 MD·TXT·CSS·JSON 파일로 넣으세요.');
-      if (file.size > 100000) throw Error('참고 글은 100 KB 이하로 넣으세요. 필요한 부분만 붙여 넣어도 됩니다.');
-      const content = await file.text(); ensureCurrent(); const next = project.design.sources + `\n\n[사용자 참고 글: ${file.name}]\n` + content;
-      if (next.length > 24000) throw Error('참고 자료는 합계 24,000자 이하로 넣으세요. 핵심 규칙을 추려 주세요.');
-      project.design.sources = next; changed(); render(); toast('참고 글을 추가했습니다. 출처와 내용을 확인하세요.');
-    } else if (target.id === 'logo-file' || target.dataset.image) {
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2097152) throw Error('로고는 2 MB 이하의 PNG·JPG·WebP 이미지로 넣으세요.');
-      const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(Error('로고 파일을 읽지 못했습니다.')); reader.readAsDataURL(file); });
-      ensureCurrent(); project[target.dataset.image || 'logoDataUrl'] = validateLogo(data); changed(); render();
-    } else if (target.dataset.font) {
-      const role = target.dataset.font, format = file.name.split('.').pop().toLowerCase();
-      if (!['ttf', 'otf', 'woff', 'woff2'].includes(format) || file.size > 5242880) throw Error('글꼴은 5 MB 이하의 TTF·OTF·WOFF·WOFF2 파일로 넣으세요.');
-      const value = validateFont({ name: file.name, dataUrl: (await asDataUrl(file)).replace(/^data:[^;]*;/, `data:font/${format};`) });
-      ensureCurrent(); await flush(); ensureCurrent();
-      const asset = await api(`/api/projects/${ownerId}/fonts/${role}`, { method: 'POST', body: JSON.stringify(value) });
-      if (project.id !== ownerId) { toast('업로드 중 다른 디자인으로 이동했습니다. 원래 디자인에서 다시 파일을 지정하세요.'); return; }
-      fontCache.set(asset.id, value.dataUrl); project.fontAssets[role] = asset; changed(); render(); toast('글꼴 파일을 넣었습니다. 미리보기에서 실제 로딩 상태를 확인하세요.');
-    } else if (target.id === 'import-file') {
-      if (file.size > 24000000) throw Error('편집 JSON은 24 MB 이하로 넣으세요.');
-      let data; try { data = JSON.parse(await file.text()); } catch { throw Error('JSON 파일을 읽지 못했습니다. 이 서비스에서 받은 tokens.json을 선택하세요.'); }
-      if (data.schemaVersion !== 1) throw Error('지원하지 않는 편집 파일입니다. schemaVersion 1의 tokens.json을 선택하세요.');
-      await newProject(validateDesign(data.design), validateLogo(data.logoDataUrl || ''), { darkLogoDataUrl: validateLogo(data.darkLogoDataUrl || ''), symbolDataUrl: validateLogo(data.symbolDataUrl || ''), fontFiles: data.fontFiles || {} }); await fontFilesFor(project); toast('편집 파일을 새 디자인 시스템으로 열었습니다.');
+    if (target.id === 'reference-file') {
+      const items = files.map(file => ({ id: crypto.randomUUID(), file, state: 'waiting', message: '대기 중' }));
+      uploadQueue.push(...items); renderReferences();
+      let succeeded = 0;
+      for (const item of items) {
+        item.state = 'reading'; item.message = '업로드·텍스트 읽기 중…'; activity.textContent = `${item.file.name} · ${items.indexOf(item) + 1} / ${items.length}번째 파일 처리 중`; renderReferences();
+        try {
+          if (!REFERENCE_ACCEPT.split(',').includes('.' + item.file.name.split('.').pop().toLowerCase())) throw Error('지원하는 참고 문서·이미지 형식을 확인하세요.');
+          if (!item.file.size || item.file.size > 15 * 1024 * 1024) throw Error('비어 있지 않은 15 MB 이하 파일을 넣으세요.');
+          const dataUrl = await asDataUrl(item.file); ensureCurrent(); await flush(); ensureCurrent();
+          saving = api(`/api/projects/${ownerId}/references`, { method: 'POST', body: JSON.stringify({ revision: project.revision, name: item.file.name, dataUrl }) }).then(p => {
+            ensureCurrent(); project.references = p.references; project.revision = p.revision; project.updatedAt = p.updatedAt; reviewed = false;
+            const meta = projects.find(x => x.id === ownerId); if (meta) Object.assign(meta, { revision: p.revision, updatedAt: p.updatedAt });
+            if (edit > saved) remember(); else saveState('이 PC에 저장됨');
+          }).finally(() => { saving = null; });
+          await saving; succeeded++; uploadQueue.splice(uploadQueue.indexOf(item), 1);
+        } catch (e) { item.state = 'failed'; item.message = e.message; }
+        renderReferences();
+      }
+      toast(`${items.length}개 중 ${succeeded}개를 보관했습니다. 파일별 읽기 상태를 확인하세요.`);
+    } else {
+      const file = files[0]; activity.textContent = file.name + ' · 파일 읽는 중…';
+      if (target.dataset.image) {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2097152) throw Error('로고·심볼은 2 MB 이하의 PNG·JPG·WebP 이미지로 넣으세요. PDF는 참고 문서 영역에 넣어 주세요.');
+        const data = await asDataUrl(file); ensureCurrent(); project[target.dataset.image] = validateLogo(data); changed(); render(); toast('선택한 역할의 이미지를 넣었습니다.');
+      } else if (target.dataset.font) {
+        const role = target.dataset.font, format = file.name.split('.').pop().toLowerCase();
+        if (!['ttf', 'otf', 'woff', 'woff2'].includes(format) || file.size > 5242880) throw Error('글꼴은 5 MB 이하의 TTF·OTF·WOFF·WOFF2 파일로 넣으세요.');
+        const value = validateFont({ name: file.name, dataUrl: (await asDataUrl(file)).replace(/^data:[^;]*;/, `data:font/${format};`) });
+        ensureCurrent(); await flush(); ensureCurrent();
+        const asset = await api(`/api/projects/${ownerId}/fonts/${role}`, { method: 'POST', body: JSON.stringify(value) }); ensureCurrent();
+        fontCache.set(asset.id, value.dataUrl); project.fontAssets[role] = asset; changed(); render(); toast('글꼴 파일을 넣었습니다. 미리보기에서 로딩 상태를 확인하세요.');
+      } else if (target.id === 'import-file') {
+        if (file.size > 32000000) throw Error('편집 JSON은 32 MB 이하로 넣으세요.');
+        let data; try { data = JSON.parse(await file.text()); } catch { throw Error('JSON 파일을 읽지 못했습니다. 이 서비스에서 받은 tokens.json을 선택하세요.'); }
+        ensureCurrent(); if (data.schemaVersion !== 1) throw Error('지원하지 않는 편집 파일입니다. schemaVersion 1의 tokens.json을 선택하세요.');
+        await newProject(validateDesign(data.design), validateLogo(data.logoDataUrl || ''), { darkLogoDataUrl: validateLogo(data.darkLogoDataUrl || ''), symbolDataUrl: validateLogo(data.symbolDataUrl || ''), fontFiles: data.fontFiles || {}, referenceTexts: data.referenceTexts || [] }); await fontFilesFor(project); toast('새 디자인으로 열었습니다. 참고 문서 원본은 다시 첨부하세요.');
+      }
     }
   } catch (e) { showError(e.message); toast(e.message); }
-  target.value = ''; target.disabled = false; target.closest('label')?.removeAttribute('aria-busy');
+  finally { uploading = false; activity.hidden = true; target.value = ''; target.disabled = false; document.querySelectorAll('[data-pick]').forEach(b => b.disabled = false); }
+}
+document.addEventListener('change', event => {
+  if (event.target.id === 'ai-provider') { provider = event.target.value; return; }
+  if (event.target.matches('input[type=file]')) handleFiles(event.target, Array.from(event.target.files || []));
+});
+for (const type of ['dragenter', 'dragover', 'dragleave', 'drop']) document.addEventListener(type, event => {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  const zone = event.target.closest?.('[data-drop]');
+  if (type === 'dragenter' || type === 'dragover') { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = zone && !uploading ? 'copy' : 'none'; zone?.classList.add('dragging'); }
+  if (type === 'dragleave' && zone && !zone.contains(event.relatedTarget)) zone.classList.remove('dragging');
+  if (type === 'drop') {
+    event.preventDefault(); document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    if (zone) handleFiles(document.getElementById(zone.dataset.drop), Array.from(event.dataTransfer.files));
+    else toast('파일 종류에 맞는 업로드 영역에 놓아 주세요.');
+  }
 });
 document.addEventListener('click', async event => {
   const b = event.target.closest('button'); if (!b) return;
   try {
+    if (uploading) throw Error('파일을 보관하는 중입니다. 완료 후 이동하거나 편집하세요.');
+    if (b.dataset.pick) { document.getElementById(b.dataset.pick).click(); return; }
+    if (b.dataset.removeReference) { project.references = project.references.filter(f => f.id !== b.dataset.removeReference); changed(); renderReferences(); return; }
+    if (b.dataset.dismissUpload) { const index = uploadQueue.findIndex(x => x.id === b.dataset.dismissUpload); if (index >= 0) uploadQueue.splice(index, 1); renderReferences(); return; }
+    if (b.dataset.retryUpload) { const index = uploadQueue.findIndex(x => x.id === b.dataset.retryUpload); if (index >= 0) { const [item] = uploadQueue.splice(index, 1); await handleFiles($('#reference-file'), [item.file]); } return; }
     if (b.dataset.close) { $('#' + b.dataset.close).close(); return; }
     if (b.dataset.step !== undefined || b.dataset.go !== undefined) { await go(Number(b.dataset.step ?? b.dataset.go)); return; }
     if (b.dataset.tab) { if (invalid.size) throw Error('잘못된 색상·숫자 값을 먼저 수정하세요.'); tab = b.dataset.tab; render(); $('#tab-' + tab).focus(); return; }
@@ -265,7 +314,6 @@ document.addEventListener('click', async event => {
     if (b.id === 'save-now') { await flush(); toast('현재 디자인이 이 PC에 저장돼 있습니다.'); }
     if (b.id === 'backup') await backup();
     if (b.id === 'new-project') { await newProject(); $('#f-name').focus(); }
-    if (b.id === 'remove-logo') { project.logoDataUrl = ''; changed(); renderLogo(); }
     if (b.id === 'mobile-preview' || b.id === 'desktop-preview') { const mobile = b.id === 'mobile-preview'; $('#preview-stage').classList.toggle('mobile', mobile); [$('#desktop-preview'), $('#mobile-preview')].forEach(x => { const selected = x === b; x.classList.toggle('selected', selected); x.setAttribute('aria-pressed', String(selected)); }); }
     if (b.id === 'copy-handoff') await copy(handoffPrompt);
     if (b.id === 'download-zip' || b.id === 'download-md') {
@@ -273,7 +321,7 @@ document.addEventListener('click', async event => {
       try {
         const extension = b.id === 'download-zip' ? 'export.zip' : 'design.md', response = await fetch(`/api/projects/${project.id}/${extension}?revision=${project.revision}`);
         if (!response.ok) { const result = await response.json(); throw Error(result.error); }
-        download(await response.blob(), extension === 'export.zip' ? 'design-system.zip' : 'DESIGN.md'); toast('자료를 내려받았습니다. 다운로드 폴더에서 확인하세요.');
+        download(await response.blob(), extension === 'export.zip' ? 'design-system.zip' : 'DESIGN.md'); toast('자료를 내려받았습니다. 참고 문서 원본은 ZIP에서 확인하세요.');
       } finally { b.disabled = !reviewed; }
     }
     if (b.id === 'generate') {
@@ -292,7 +340,7 @@ document.addEventListener('click', async event => {
     if (b.id === 'undo' && undo) { project.design = undo.design; project.logoDataUrl = undo.logoDataUrl; undo = null; invalid.clear(); changed(); await flush(); render(); toast('AI 제안 적용 전으로 되돌렸습니다.'); }
   } catch (e) { showError(e.message); toast(e.message); }
 });
-window.addEventListener('beforeunload', event => { if (edit !== saved || invalid.size) { remember(); event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if (uploading || edit !== saved || invalid.size) { remember(); event.preventDefault(); event.returnValue = ''; } });
 window.addEventListener('pagehide', () => { if (edit !== saved || invalid.size) remember(); });
 document.addEventListener('keydown', event => {
   const target = event.target.closest('[data-tab]');

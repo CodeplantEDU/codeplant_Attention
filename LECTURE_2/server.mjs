@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, rename, readdir, realpath } from 'node:fs/p
 import { initialDesign, validateDesign, validateLogo, ASSET_LABELS } from './public/model.mjs';
 import { saveFont, readFont, ownedFonts, FONT_ROLES } from './lib/assets.mjs';
 import { exportFiles, zip } from './lib/export.mjs';
+import { saveReference, readReference, ownedReferences, importReferenceTexts, referenceLimit, referenceContext } from './lib/references.mjs';
 import { connection, generate, openLogin, safeFailure, PROVIDERS } from './lib/providers.mjs';
 
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/;
@@ -16,11 +17,11 @@ async function atomic(file, value) {
 }
 async function body(req) {
   let size = 0; const chunks = [];
-  for await (const chunk of req) { size += chunk.length; if (size > 24000000) throw problem('편집 자료 전체는 24 MB 이하로 넣으세요.', 413); chunks.push(chunk); }
+  for await (const chunk of req) { size += chunk.length; if (size > 32000000) throw problem('편집 자료 전체는 32 MB 이하로 넣으세요.', 413); chunks.push(chunk); }
   try { const value = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(); return value; } catch { throw problem('JSON 자료의 형식을 확인하세요.'); }
 }
 export async function createService({ root, dataDir = path.join(root, '.local-data'), runner = generate, probe = connection } = {}) {
-  const projectsDir = path.join(dataDir, 'projects'), jobsDir = path.join(dataDir, 'jobs'), fontsDir = path.join(dataDir, 'fonts');
+  const projectsDir = path.join(dataDir, 'projects'), jobsDir = path.join(dataDir, 'jobs'), fontsDir = path.join(dataDir, 'fonts'), referencesDir = path.join(dataDir, 'references');
   await mkdir(projectsDir, { recursive: true }); await mkdir(jobsDir, { recursive: true });
   const publicDir = await realpath(path.join(root, 'public'));
   const token = randomBytes(24).toString('hex'), workspace = createHash('sha256').update(path.resolve(dataDir)).digest('hex').slice(0, 16);
@@ -35,7 +36,7 @@ export async function createService({ root, dataDir = path.join(root, '.local-da
   }
   async function project(id) {
     if (!UUID.test(id)) throw problem('디자인 시스템 ID를 확인하세요.', 404);
-    try { const p = JSON.parse(await readFile(path.join(projectsDir, `${id}.json`), 'utf8')); return { ...p, design: validateDesign(p.design), darkLogoDataUrl: p.darkLogoDataUrl || '', symbolDataUrl: p.symbolDataUrl || '', fontAssets: p.fontAssets || {} }; }
+    try { const p = JSON.parse(await readFile(path.join(projectsDir, `${id}.json`), 'utf8')); return { ...p, design: validateDesign(p.design), darkLogoDataUrl: p.darkLogoDataUrl || '', symbolDataUrl: p.symbolDataUrl || '', fontAssets: p.fontAssets || {}, references: p.references || [] }; }
     catch (e) { throw problem(e.code === 'ENOENT' ? '저장된 디자인 시스템이 없습니다.' : '저장 자료를 읽지 못했습니다. 원본 파일을 보존하고 서버 로그를 확인하세요.', e.code === 'ENOENT' ? 404 : 500); }
   }
   function locked(id, action) {
@@ -84,7 +85,30 @@ export async function createService({ root, dataDir = path.join(root, '.local-da
         p.fontAssets = {};
         if (input.fontFiles && (typeof input.fontFiles !== 'object' || Object.keys(input.fontFiles).some(k => !FONT_ROLES.includes(k)))) throw problem('본문·제목 글꼴 파일만 가져올 수 있습니다.');
         for (const role of FONT_ROLES) if (input.fontFiles?.[role]) p.fontAssets[role] = await saveFont(fontsDir, p.id, input.fontFiles[role]);
+        p.references = await importReferenceTexts(referencesDir, p.id, input.referenceTexts);
         await atomic(path.join(projectsDir, `${p.id}.json`), p); return json(res, 201, p);
+      }
+      const referenceMatch = pathname.match(/^\/api\/projects\/([\da-f-]{36})\/references(?:\/([\da-f-]{36}))?$/);
+      if (referenceMatch) {
+        const p = await project(referenceMatch[1]);
+        if (req.method === 'GET' && referenceMatch[2]) {
+          if (!p.references.some(f => f.id === referenceMatch[2])) throw problem('이 디자인에 첨부된 참고 파일이 아닙니다.', 404);
+          const f = await readReference(referencesDir, referenceMatch[2], p.id, true);
+          res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="reference.${f.meta.extension}"; filename*=UTF-8''${encodeURIComponent(f.meta.name).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16))}` }); return res.end(f.data);
+        }
+        if (req.method === 'POST' && !referenceMatch[2]) {
+          const input = await body(req);
+          const result = await locked(p.id, async () => {
+            const current = await project(p.id);
+            if (input.revision !== current.revision) throw problem('자료가 변경됐습니다. 저장 상태를 확인한 뒤 다시 넣어 주세요.', 409);
+            if (current.references.length >= 20) throw problem('참고 파일은 20개까지 넣을 수 있습니다.');
+            const file = await saveReference(referencesDir, p.id, input);
+            referenceLimit([...current.references, file]);
+            current.references.push(file); current.revision++; current.updatedAt = new Date().toISOString();
+            await atomic(path.join(projectsDir, `${p.id}.json`), current); return current;
+          });
+          return json(res, 201, result);
+        }
       }
       const uploadMatch = pathname.match(/^\/api\/projects\/([\da-f-]{36})\/fonts\/(body|heading)$/);
       if (req.method === 'POST' && uploadMatch) {
@@ -101,7 +125,8 @@ export async function createService({ root, dataDir = path.join(root, '.local-da
             if (input.revision !== old.revision) throw problem('다른 탭에서 수정된 자료입니다. 이 화면의 JSON 백업을 받은 뒤 브라우저를 새로고침해 최신 자료를 여세요.', 409);
             const images = {}; for (const key of Object.keys(ASSET_LABELS)) images[key] = validateLogo(input[key] ?? old[key] ?? '');
             const fontAssets = await ownedFonts(fontsDir, id, input.fontAssets ?? old.fontAssets);
-            const p = { ...old, design, ...images, fontAssets, revision: old.revision + 1, updatedAt: new Date().toISOString() };
+            const references = await ownedReferences(referencesDir, id, input.references ?? old.references);
+            const p = { ...old, design, ...images, fontAssets, references, revision: old.revision + 1, updatedAt: new Date().toISOString() };
             await atomic(path.join(projectsDir, `${id}.json`), p); return p;
           }); return json(res, 200, p);
         }
@@ -114,6 +139,7 @@ export async function createService({ root, dataDir = path.join(root, '.local-da
           for (const role of FONT_ROLES) if (p.fontAssets[role]) { const f = await readFont(fontsDir, p.fontAssets[role].id, p.id); fontFiles[role] = { name: f.meta.name, dataUrl: f.dataUrl }; }
           const files = exportFiles(p, fontFiles);
           if (match[2] === 'design.md') { res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'attachment; filename="DESIGN.md"' }); return res.end(files['DESIGN.md']); }
+          for (const f of p.references) if (f.originalAvailable) files[`references/${f.id}.${f.extension}`] = (await readReference(referencesDir, f.id, p.id, true)).data;
           for (const file of ['Pretendard-Regular.ttf', 'Pretendard-SemiBold.ttf', 'Pretendard-Bold.ttf', 'Pretendard-LICENSE.txt']) files[`assets/${file}`] = await readFile(path.join(publicDir, 'assets', file));
           files['preview-demo.js'] = await readFile(path.join(publicDir, 'preview-demo.js'));
           res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="design-system.zip"' }); return res.end(zip(files));
@@ -136,7 +162,7 @@ export async function createService({ root, dataDir = path.join(root, '.local-da
         catch (e) { jobs.delete(job.id); active = null; throw e; }
         (async () => {
           try {
-            const design = await runner(input.provider, p.design, input.instruction || '입력한 기획과 참고 자료에 맞춰 일관된 디자인 시스템 초안을 제안하세요.', path.join(dataDir, 'runs', job.id), controller.signal);
+            const design = await runner(input.provider, p.design, (input.instruction || '입력한 기획과 참고 자료에 맞춰 일관된 디자인 시스템 초안을 제안하세요.') + referenceContext(p.references), path.join(dataDir, 'runs', job.id), controller.signal);
             if (controller.signal.aborted) throw Error('작업을 중지했습니다.');
             job.design = validateDesign(design);
             // Licensing notes are user evidence; model suggestions must not invent them.

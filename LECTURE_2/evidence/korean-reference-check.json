@@ -1,0 +1,12 @@
+{
+  "testedAt": "2026-10-21T03:08:05.319Z",
+  "projectId": "b42cdfab-3feb-4611-846d-76179fa20474",
+  "filename": "공개 검수용 브랜드.pdf",
+  "extractedKorean": true,
+  "originalByteMatch": true,
+  "bytes": 46530,
+  "sha256": "f78ffd5685a96dfed7cab535e766c136234bbe4bd045da39ba04add8d725dec3",
+  "status": "extracted",
+  "warning": "텍스트만 읽었습니다. 이미지·도표와 복잡한 표 배치는 확인이 필요합니다.",
+  "aiCall": false
+}
